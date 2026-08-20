@@ -12,7 +12,8 @@ import { ReVerificationResultsPanel } from "./column2/ReVerificationResultsPanel
 import { AuditTrailPanel } from "./column3/AuditTrailPanel";
 import { ExecutionTimelineLink } from "./column3/ExecutionTimelineLink";
 import { CompleteSecurePanel } from "./column3/CompleteSecurePanel";
-import { DwsViewerSlot } from "./column3/DwsViewerSlot";
+import { DwsViewerSlot } from "../shared/DwsViewerSlot";
+import { dwsSeal } from "@/lib/evidence-data";
 
 export function EvidenceReport() {
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export function EvidenceReport() {
               <AuditTrailPanel selectedTarget={selectedTarget} onSelect={setSelectedTarget} />
               <ExecutionTimelineLink />
               <CompleteSecurePanel highlighted={selectedTarget === "signoff"} />
-              <DwsViewerSlot />
+              <DwsViewerSlot documentId={dwsSeal.documentId} verificationId={dwsSeal.verificationId} />
             </div>
           </main>
         </div>

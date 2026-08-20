@@ -5,10 +5,7 @@ import clsx from "clsx";
 import { IconCopy, IconCheck } from "@tabler/icons-react";
 import { Panel } from "../../command-center/Panel";
 import { commitInfo, evidenceDiff } from "@/lib/evidence-data";
-
-function truncateHash(hash: string) {
-  return `${hash.slice(0, 7)}…${hash.slice(-6)}`;
-}
+import { truncateHash } from "@/lib/format";
 
 export function RemediationEvidencePackPanel({ highlighted }: { highlighted: boolean }) {
   const [copied, setCopied] = useState(false);
