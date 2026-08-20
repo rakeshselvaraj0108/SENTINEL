@@ -15,7 +15,7 @@ import {
 
 const navItems = [
   { href: "/", icon: IconLayoutDashboard, label: "Command Center" },
-  { href: null, icon: IconFlask2, label: "Verification Lab" },
+  { href: "/verification-lab", icon: IconFlask2, label: "Verification Lab" },
   { href: "/remediation", icon: IconGitPullRequest, label: "Remediation" },
   { href: "/evidence", icon: IconFileCheck, label: "Evidence Report" },
   { href: null, icon: IconShieldLock, label: "Governance" },
