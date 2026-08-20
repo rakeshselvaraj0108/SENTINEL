@@ -8,7 +8,7 @@ export function DeploymentGatePage() {
       <TopBar />
       <div className="flex min-h-0 flex-1">
         <IconRail />
-        <main className="flex flex-1 items-center justify-center overflow-auto p-6">
+        <main className="gate-spotlight relative flex flex-1 items-center justify-center overflow-auto p-6">
           <DeploymentGateCard />
         </main>
       </div>
