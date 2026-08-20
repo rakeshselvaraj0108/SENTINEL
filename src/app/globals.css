@@ -120,3 +120,21 @@ body {
     opacity: 0;
   }
 }
+
+@keyframes card-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px rgba(242, 166, 60, 0.25), 0 0 0px rgba(242, 166, 60, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 1px rgba(242, 166, 60, 0.4), 0 0 36px rgba(242, 166, 60, 0.16);
+  }
+}
+
+.gate-pending-glow {
+  animation: card-pulse 3.2s ease-in-out infinite;
+}
+
+.gate-spotlight {
+  background: radial-gradient(ellipse 720px 480px at center, rgba(242, 166, 60, 0.07), transparent 70%);
+}
