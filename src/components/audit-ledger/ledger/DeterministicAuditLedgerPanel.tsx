@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { List, type RowComponentProps } from "react-window";
 import { Panel } from "../../command-center/Panel";
 import { LedgerFilterBar, type LedgerFilters } from "./LedgerFilterBar";
@@ -9,6 +9,7 @@ import { GroupHeaderRow } from "./GroupHeaderRow";
 import { EntryRow } from "./EntryRow";
 import { LedgerEntryDetail } from "./LedgerEntryDetail";
 import { ledgerEntries } from "@/lib/ledger-data";
+import { getFullLedger } from "@/lib/ledger-runtime";
 import type { FlatRow, LedgerEntry } from "@/lib/ledger-types";
 
 const GROUP_ROW_HEIGHT = 34;
@@ -56,22 +57,30 @@ function Row({
 }
 
 export function DeterministicAuditLedgerPanel() {
+  const [allEntries, setAllEntries] = useState<LedgerEntry[]>(ledgerEntries);
   const [filters, setFilters] = useState<LedgerFilters>({ agent: "all", query: "", dateFrom: "", dateTo: "" });
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     () => new Set(ledgerEntries.map((e) => e.findingId))
   );
   const [selected, setSelected] = useState<LedgerEntry | null>(null);
 
+  useEffect(() => {
+    const load = () => setAllEntries(getFullLedger());
+    load();
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, []);
+
   const filteredEntries = useMemo(() => {
     const q = filters.query.trim().toLowerCase();
-    return ledgerEntries.filter((e) => {
+    return allEntries.filter((e) => {
       if (filters.agent !== "all" && e.agent !== filters.agent) return false;
       if (q && !(e.findingId.toLowerCase().includes(q) || e.title.toLowerCase().includes(q))) return false;
       if (filters.dateFrom && e.timestamp < filters.dateFrom) return false;
       if (filters.dateTo && e.timestamp > `${filters.dateTo}T23:59:59Z`) return false;
       return true;
     });
-  }, [filters]);
+  }, [filters, allEntries]);
 
   const rows: FlatRow[] = useMemo(() => {
     const groups = new Map<string, { title: string; entries: LedgerEntry[] }>();
@@ -105,7 +114,7 @@ export function DeterministicAuditLedgerPanel() {
   return (
     <Panel
       title="Deterministic Audit Ledger"
-      headerRight={<VerifyChainAction />}
+      headerRight={<VerifyChainAction entries={allEntries} />}
       className="h-full"
       bodyClassName="flex min-h-0 flex-1 flex-col"
     >

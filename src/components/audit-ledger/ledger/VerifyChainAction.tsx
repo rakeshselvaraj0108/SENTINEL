@@ -5,15 +5,15 @@ import clsx from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
 import { IconShieldCheck, IconShieldX, IconLoader2, IconLink } from "@tabler/icons-react";
 import { sha256Hex } from "@/lib/sha256";
-import { ledgerEntries } from "@/lib/ledger-data";
+import { ledgerEntries, ledgerEntryPayload } from "@/lib/ledger-data";
+import type { LedgerEntry } from "@/lib/ledger-types";
 
 type ChainStatus = "idle" | "verifying" | "verified" | "broken";
 
-function recomputeChain(): { ok: boolean; brokenAt: number | null } {
-  let prevHash = ledgerEntries[0]?.prevHash;
-  for (const entry of ledgerEntries) {
-    const payload = `${entry.findingId}|${entry.agent}|${entry.action}|${entry.detail}|${entry.timestamp}`;
-    const recomputed = sha256Hex((prevHash ?? "") + payload);
+function recomputeChain(entries: LedgerEntry[]): { ok: boolean; brokenAt: number | null } {
+  let prevHash = entries[0]?.prevHash;
+  for (const entry of entries) {
+    const recomputed = sha256Hex((prevHash ?? "") + ledgerEntryPayload(entry));
     if (recomputed !== entry.hash || entry.prevHash !== prevHash) {
       return { ok: false, brokenAt: entry.seq };
     }
@@ -22,14 +22,14 @@ function recomputeChain(): { ok: boolean; brokenAt: number | null } {
   return { ok: true, brokenAt: null };
 }
 
-export function VerifyChainAction() {
+export function VerifyChainAction({ entries = ledgerEntries }: { entries?: LedgerEntry[] }) {
   const [status, setStatus] = useState<ChainStatus>("idle");
   const [brokenAt, setBrokenAt] = useState<number | null>(null);
 
   const handleVerify = () => {
     setStatus("verifying");
     setTimeout(() => {
-      const result = recomputeChain();
+      const result = recomputeChain(entries);
       setBrokenAt(result.brokenAt);
       setStatus(result.ok ? "verified" : "broken");
     }, 700);
@@ -59,7 +59,7 @@ export function VerifyChainAction() {
         )}
         {status === "idle" && "verify chain"}
         {status === "verifying" && "recomputing hash chain…"}
-        {status === "verified" && `chain verified — ${ledgerEntries.length}/${ledgerEntries.length} entries`}
+        {status === "verified" && `chain verified — ${entries.length}/${entries.length} entries`}
         {status === "broken" && `integrity break at entry #${brokenAt}`}
       </button>
 
