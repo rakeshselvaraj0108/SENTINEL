@@ -1,4 +1,6 @@
 import clsx from "clsx";
+import Link from "next/link";
+import { IconArrowUpRight } from "@tabler/icons-react";
 import { Panel } from "../../command-center/Panel";
 import { auditTrail } from "@/lib/evidence-data";
 import { formatTimestampUtc } from "@/lib/format";
@@ -10,7 +12,19 @@ interface AuditTrailPanelProps {
 
 export function AuditTrailPanel({ selectedTarget, onSelect }: AuditTrailPanelProps) {
   return (
-    <Panel title="Deterministic Audit Trail" bodyClassName="flex flex-col gap-0.5 p-2">
+    <Panel
+      title="Deterministic Audit Trail"
+      headerRight={
+        <Link
+          href="/audit-ledger"
+          className="flex items-center gap-1 font-data text-[9.5px] text-text-dim transition-colors hover:text-amber"
+        >
+          full ledger
+          <IconArrowUpRight size={10} strokeWidth={1.5} />
+        </Link>
+      }
+      bodyClassName="flex flex-col gap-0.5 p-2"
+    >
       {auditTrail.map((node, i) => {
         const isLast = i === auditTrail.length - 1;
         const isSelected = selectedTarget === node.highlightTarget;
