@@ -8,6 +8,8 @@ interface FindingTemplate {
   sourceScan: string;
   layers: [string, string];
   startDate: string; // ISO date, entries generated a few hours apart from here
+  /** Drops the trailing human-approval step — this finding is still awaiting a Deployment Gate decision. */
+  awaitingHumanDecision?: boolean;
 }
 
 const findingTemplates: FindingTemplate[] = [
@@ -107,6 +109,15 @@ const findingTemplates: FindingTemplate[] = [
     layers: ["route removal (Go)", "network policy (Terraform)"],
     startDate: "2026-07-28T06:33:59Z",
   },
+  {
+    id: "F-1120",
+    cve: "CVE-2026-1220",
+    title: "Missing CSRF token validation — /api/account/update",
+    sourceScan: "SAST scan",
+    layers: ["double-submit CSRF token (Go)", "SameSite=Strict cookie policy (Terraform)"],
+    startDate: "2026-08-20T09:00:00Z",
+    awaitingHumanDecision: true,
+  },
 ];
 
 function minutesLater(iso: string, minutes: number): string {
@@ -114,7 +125,7 @@ function minutesLater(iso: string, minutes: number): string {
 }
 
 function buildFindingEntries(f: FindingTemplate): LedgerEntryInput[] {
-  return [
+  const entries: LedgerEntryInput[] = [
     {
       findingId: f.id,
       title: f.title,
@@ -180,15 +191,20 @@ function buildFindingEntries(f: FindingTemplate): LedgerEntryInput[] {
       timestamp: minutesLater(f.startDate, 26),
     },
   ];
+  return f.awaitingHumanDecision ? entries.slice(0, -1) : entries;
 }
 
 const GENESIS_HASH = sha256Hex("SENTINEL:genesis");
 
+/** Same payload format used to build the base chain — reused by runtime appends (e.g. the Deployment Gate). */
+export function ledgerEntryPayload(input: LedgerEntryInput): string {
+  return `${input.findingId}|${input.agent}|${input.action}|${input.detail}|${input.timestamp}`;
+}
+
 function buildChain(inputs: LedgerEntryInput[]): LedgerEntry[] {
   let prevHash = GENESIS_HASH;
   return inputs.map((input, i) => {
-    const payload = `${input.findingId}|${input.agent}|${input.action}|${input.detail}|${input.timestamp}`;
-    const hash = sha256Hex(prevHash + payload);
+    const hash = sha256Hex(prevHash + ledgerEntryPayload(input));
     const entry: LedgerEntry = { ...input, seq: i, hash, prevHash };
     prevHash = hash;
     return entry;
