@@ -18,7 +18,7 @@ const navItems = [
   { href: "/verification-lab", icon: IconFlask2, label: "Verification Lab" },
   { href: "/remediation", icon: IconGitPullRequest, label: "Remediation" },
   { href: "/evidence", icon: IconFileCheck, label: "Evidence Report" },
-  { href: null, icon: IconShieldLock, label: "Governance" },
+  { href: "/governance", icon: IconShieldLock, label: "Governance" },
   { href: null, icon: IconDoorExit, label: "Deployment Gate" },
   { href: null, icon: IconBell, label: "Alerts" },
 ];
