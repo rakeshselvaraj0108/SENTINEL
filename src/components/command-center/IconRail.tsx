@@ -19,7 +19,7 @@ const navItems = [
   { href: "/remediation", icon: IconGitPullRequest, label: "Remediation" },
   { href: "/evidence", icon: IconFileCheck, label: "Evidence Report" },
   { href: "/governance", icon: IconShieldLock, label: "Governance" },
-  { href: null, icon: IconDoorExit, label: "Deployment Gate" },
+  { href: "/deployment-gate", icon: IconDoorExit, label: "Deployment Gate" },
   { href: null, icon: IconBell, label: "Alerts" },
 ];
 
