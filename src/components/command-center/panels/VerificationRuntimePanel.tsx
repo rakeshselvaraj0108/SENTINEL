@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Panel } from "../Panel";
 import { verificationState, verificationLog } from "@/lib/mock-data";
 import type { LogLine } from "@/lib/types";
@@ -13,6 +14,14 @@ const levelColor: Record<LogLine["level"], string> = {
 
 export function VerificationRuntimePanel() {
   const { activeAgent, activeTask, progressPct } = verificationState;
+  const [cursorTs, setCursorTs] = useState<string | null>(null);
+
+  useEffect(() => {
+    const update = () => setCursorTs(new Date().toISOString().slice(11, 23));
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <Panel title="Verification Lab Runtime" bodyClassName="flex flex-col p-3 gap-3">
@@ -42,7 +51,7 @@ export function VerificationRuntimePanel() {
         ))}
         <div className="flex gap-2">
           <span className="text-text-dim">
-            {new Date().toISOString().slice(11, 23)}
+            {cursorTs ?? verificationLog[verificationLog.length - 1].ts}
           </span>
           <span className="text-text-muted">
             _<span className="animate-[blink-caret_1s_step-end_infinite]">_</span>
