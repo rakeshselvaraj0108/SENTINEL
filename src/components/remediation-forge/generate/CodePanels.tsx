@@ -62,7 +62,18 @@ export function CodePanels() {
       <AnimatePresence>
         {languagePatches.map((p) => (
           <motion.div key={p.key} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
-            <button type="button" onClick={() => setExpanded(p.key)} className="block w-full text-left">
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => setExpanded(p.key)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setExpanded(p.key);
+                }
+              }}
+              className="block w-full text-left"
+            >
               <Panel
                 title={p.label}
                 headerRight={<span className="font-data text-[9.5px] text-text-dim">{p.file}</span>}
@@ -70,7 +81,7 @@ export function CodePanels() {
               >
                 <DiffCodeBlock lines={p.lines} isDiff={p.isDiff} />
               </Panel>
-            </button>
+            </div>
           </motion.div>
         ))}
       </AnimatePresence>
