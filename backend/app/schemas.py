@@ -1,0 +1,89 @@
+"""Pydantic schemas shared across every agent module.
+
+These shapes are the actual contract with the frontend (see AGENTS.md
+section 9 for the evidence object, and the individual agent I/O tables in
+the backend build prompt). Nothing here is decorative - every field is
+read by a real page once the data-contract wiring step lands.
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+
+class Severity(str, Enum):
+    critical = "critical"
+    high = "high"
+    medium = "medium"
+    low = "low"
+
+
+class Finding(BaseModel):
+    finding_id: str
+    severity: Severity
+    component: str
+    version: str
+    source: str
+    # Real, verifiable advisory identifier (e.g. a GitHub Security Advisory
+    # GHSA-id). Never a fabricated CVE-shaped string - see AGENTS.md's
+    # "Demo data" note. Not every disclosed vulnerability has a CVE number
+    # assigned, so this is deliberately advisory-scheme-agnostic.
+    advisory_id: str | None = None
+    advisory_url: str | None = None
+    cwe: list[str] = Field(default_factory=list)
+    cvss_score: float | None = None
+    summary: str | None = None
+
+
+class RelevanceVerdictValue(str, Enum):
+    confirmed = "confirmed"
+    likely = "likely"
+    uncertain = "uncertain"
+    not_relevant = "not_relevant"
+
+
+class RelevanceVerdict(BaseModel):
+    finding_id: str
+    verdict: RelevanceVerdictValue
+    reasoning: str
+
+
+VerificationOutcome = Literal["CONFIRMED_EXPLOITABLE", "RESOLVED", "INCONCLUSIVE"]
+
+
+class VerificationResult(BaseModel):
+    finding_id: str
+    scenario: str
+    expected: str
+    observed: str
+    result: VerificationOutcome
+    sandbox_id: str
+    duration_ms: int
+
+
+class PatchProposal(BaseModel):
+    finding_id: str
+    branch_name: str
+    files_changed: list[str]
+    diff: str
+    generated_test_paths: list[str]
+    explanation: str
+
+
+class TimelineEntry(BaseModel):
+    actor: str
+    action: str
+    ts: str
+
+
+class EvidenceObject(BaseModel):
+    finding_id: str
+    repo: str
+    commit: str | None = None
+    timeline: list[TimelineEntry] = Field(default_factory=list)
+    final_status: str
+    signature: str | None = None
+    dws_seal: str | None = None
