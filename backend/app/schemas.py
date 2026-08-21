@@ -36,6 +36,10 @@ class Finding(BaseModel):
     cwe: list[str] = Field(default_factory=list)
     cvss_score: float | None = None
     summary: str | None = None
+    # Grounding fields (populated by Hunter's grounding gate)
+    verified_advisory_record: dict | None = None
+    grounding_source: str | None = None  # "osv", "nvd", "ghsa", etc.
+    grounding_status: str | None = None  # "VERIFIED", "UNVERIFIED", etc.
 
 
 class RelevanceVerdictValue(str, Enum):
@@ -49,6 +53,8 @@ class RelevanceVerdict(BaseModel):
     finding_id: str
     verdict: RelevanceVerdictValue
     reasoning: str
+    # Sourced claims: each assertion must cite its source (osv, ghsa, trace_reachability, memory_bank)
+    claims: list[dict[str, str]] = Field(default_factory=list)
 
 
 VerificationOutcome = Literal["CONFIRMED_EXPLOITABLE", "RESOLVED", "INCONCLUSIVE"]

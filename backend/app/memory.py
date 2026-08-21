@@ -12,16 +12,44 @@ from __future__ import annotations
 import chromadb
 
 from app.config import WORKDIR
+from app.knowledge import owasp_patterns
 
 _client = chromadb.PersistentClient(path=str(WORKDIR / "memory_bank"))
-_collection = _client.get_or_create_collection("sentinel_investigations")
+_verdicts_collection = _client.get_or_create_collection("sentinel_investigations")
+_remediation_collection = _client.get_or_create_collection("remediation_patterns")
+_verified_fixes_collection = _client.get_or_create_collection("verified_fixes")
+
+_owasp_ingested = False
+
+
+def _ensure_owasp_patterns_ingested() -> None:
+    """Ingest OWASP remediation patterns into remediation_patterns collection once at startup."""
+    global _owasp_ingested
+    if _owasp_ingested or _remediation_collection.count() > 0:
+        return
+    patterns = owasp_patterns.list_all_patterns()
+    for pattern in patterns:
+        doc_id = f"{pattern['cwe_id']}:{pattern['language']}"
+        _remediation_collection.upsert(
+            ids=[doc_id],
+            documents=[pattern["code"]],
+            metadatas=[
+                {
+                    "cwe_id": pattern["cwe_id"],
+                    "cwe_name": pattern["cwe_name"],
+                    "language": pattern["language"],
+                    "description": pattern["description"],
+                }
+            ],
+        )
+    _owasp_ingested = True
 
 
 def remember_verdict(repo: str, component: str, finding_id: str, verdict: str, reasoning: str) -> None:
     """Stores a real Analyst verdict so future investigations of the same
     repo/component can be informed by it."""
     doc_id = f"{repo}:{component}:{finding_id}"
-    _collection.upsert(
+    _verdicts_collection.upsert(
         ids=[doc_id],
         documents=[reasoning],
         metadatas=[{"repo": repo, "component": component, "finding_id": finding_id, "verdict": verdict}],
@@ -32,10 +60,10 @@ def recall_prior_context(repo: str, component: str, n_results: int = 3) -> list[
     """Retrieves real prior investigation context for this repo/component,
     if any exists - semantic search over previously stored reasoning, not a
     keyword lookup."""
-    count = _collection.count()
+    count = _verdicts_collection.count()
     if count == 0:
         return []
-    results = _collection.query(
+    results = _verdicts_collection.query(
         query_texts=[f"security investigation of {component} in {repo}"],
         n_results=min(n_results, count),
         where={"$and": [{"repo": repo}, {"component": component}]},
@@ -47,3 +75,64 @@ def recall_prior_context(repo: str, component: str, n_results: int = 3) -> list[
     for doc_id, doc, meta in zip(ids, docs, metas):
         memories.append({"id": doc_id, "reasoning": doc, **meta})
     return memories
+
+
+def retrieve_similar_verdicts(repo: str, cwe_class: str, n_results: int = 3) -> list[dict]:
+    """Retrieve prior Analyst verdicts similar to this CWE for this repo.
+    Used by grounded_tools.search_memory_bank()."""
+    count = _verdicts_collection.count()
+    if count == 0:
+        return []
+    results = _verdicts_collection.query(
+        query_texts=[f"{cwe_class} vulnerability assessment"],
+        n_results=min(n_results, count),
+    )
+    memories = []
+    for doc_id, doc, meta in zip(
+        results.get("ids", [[]])[0],
+        results.get("documents", [[]])[0],
+        results.get("metadatas", [[]])[0],
+    ):
+        memories.append({"id": doc_id, "reasoning": doc, **meta})
+    return memories
+
+
+def retrieve_verified_fix(cwe_id: str, language: str | None = None) -> dict | None:
+    """Retrieve a verified fix from a prior Re-Verifier confirmation.
+    Looks for fixes that passed re-verification (confirmed status).
+    Used by grounded_tools.retrieve_fix_pattern()."""
+    _ensure_owasp_patterns_ingested()
+    count = _verified_fixes_collection.count()
+    if count == 0:
+        return None
+    query = f"{cwe_id} fix" if not language else f"{cwe_id} {language} fix"
+    results = _verified_fixes_collection.query(
+        query_texts=[query],
+        n_results=1,
+    )
+    if not results.get("ids", [[]])[0]:
+        return None
+    meta = results.get("metadatas", [[]])[0][0] if results.get("metadatas", [[]])[0] else None
+    if language and meta.get("language") != language:
+        return None
+    return {"cwe_id": meta.get("cwe_id"), "pattern": meta.get("pattern")}
+
+
+def store_verified_fix(cwe_id: str, language: str, pattern: str, source_finding: str) -> None:
+    """Store a fix that Re-Verifier confirmed actually resolved the vulnerability.
+    This becomes the first candidate for Patch Forge on the next similar finding.
+    Called by re_verifier.py when status is RESOLVED."""
+    _ensure_owasp_patterns_ingested()
+    doc_id = f"{cwe_id}:{language}:{source_finding}"
+    _verified_fixes_collection.upsert(
+        ids=[doc_id],
+        documents=[pattern],
+        metadatas=[
+            {
+                "cwe_id": cwe_id,
+                "language": language,
+                "source_finding": source_finding,
+                "pattern": pattern,
+            }
+        ],
+    )

@@ -1,4 +1,10 @@
-"""Patch Forge - generates a real remediation for a confirmed Finding.
+"""Patch Forge - grounded fix generation using real remediation patterns.
+
+Patch Forge MUST call retrieve_fix_pattern(cwe_id, language) first. If a
+pattern exists (either from verified_fixes by Re-Verifier, or from OWASP
+Cheat Sheet), use it as grounding context for code generation. If no pattern
+exists, escalate to human review instead of improvising — this is the
+grounding discipline applied to code, not prose.
 
 For a dependency-CVE finding, the honest fix is almost never "edit
 node_modules" - it's hardening the application's own usage and/or bumping
@@ -10,9 +16,7 @@ unrelated lines (a regex literal, a duplicated token) when Gemini re-emitted
 a large file as a JSON string - a real failure mode, not a hypothetical one.
 Applying the model's snippets via Python's own str.replace, and rejecting
 any snippet that doesn't match the original exactly once, makes untouched
-code untouched by construction instead of by hoping the model behaves. The
-final diff is still computed ourselves with difflib rather than trusting
-the model's own diff formatting.
+code untouched by construction instead of by hoping the model behaves.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ from pathlib import Path
 
 from app.agents.reachability import find_reachability_evidence
 from app.governance import model_armor
+from app.grounded_tools import retrieve_fix_pattern
 from app.llm import call_gemini
 from app.schemas import Finding, PatchProposal
 
@@ -63,13 +68,21 @@ _PATCH_SCHEMA = {
 }
 
 
-def _build_prompt(finding: Finding, target_file: str, original_content: str) -> str:
+def _build_prompt(finding: Finding, target_file: str, original_content: str, reference_pattern: str = "") -> str:
     numbered = "\n".join(
         f"{i + 1}: {line}" for i, line in enumerate(original_content.splitlines())
     )
+    pattern_context = ""
+    if reference_pattern:
+        pattern_context = f"""
+REFERENCE REMEDIATION PATTERN (from OWASP or verified prior fixes):
+{reference_pattern}
+
+Use this pattern as your grounding. Do not deviate from the pattern style."""
+
     return f"""You are the Patch Forge agent in SENTINEL, an autonomous security remediation fleet. \
 Given a confirmed, reachable dependency vulnerability, produce a real, minimal, correct code fix in the \
-application's own source - not a patch to node_modules.
+application's own source - not a patch to node_modules.{pattern_context}
 
 FINDING:
 - component: {finding.component}
@@ -175,6 +188,16 @@ def generate_patch(
     a second Patch Forge attempt is grounded in what was actually observed,
     not asked to guess blind a second time.
     """
+    # Grounding gate: ensure a remediation pattern exists before generating
+    cwe_id = (finding.cwe[0] if finding.cwe else "UNKNOWN").lower()
+    language = "javascript"  # Infer from project (simplified here)
+    pattern_lookup = retrieve_fix_pattern(cwe_id, language)
+    if not pattern_lookup.get("pattern"):
+        raise ValueError(
+            f"No remediation pattern found for {cwe_id} in {language}. "
+            f"Escalating to human review instead of improvising."
+        )
+
     matches = find_reachability_evidence(repo_dir, finding.component)
     if not matches:
         raise ValueError(f"No reachable usage file found for {finding.component} - nothing to patch.")
@@ -189,7 +212,10 @@ def generate_patch(
             f"Model Armor blocked {target_relpath} before it reached the LLM prompt: {armor_result.findings}"
         )
 
-    base_prompt = _build_prompt(finding, target_relpath, original_content)
+    base_prompt = _build_prompt(
+        finding, target_relpath, original_content,
+        reference_pattern=str(pattern_lookup.get("pattern", ""))
+    )
     if verification_feedback:
         base_prompt += f"""
 

@@ -5,7 +5,11 @@ fix branch is STILL exploitable (a real, observed outcome - this happened
 during development: jsonwebtoken@0.4.0 ignores the `algorithms` verify
 option entirely, so a code-only fix left it exploitable), Re-Verifier feeds
 that concrete evidence back into one corrective Patch Forge attempt and
-re-checks, rather than silently reporting success. Everything returned here
+re-checks, rather than silently reporting success.
+
+When a fix is confirmed (RESOLVED status), Re-Verifier stores it in the
+memory bank's verified_fixes collection so Patch Forge can retrieve it as
+a grounding pattern for similar vulnerabilities. Everything returned here
 is a real VerificationResult from an actual sandboxed run - never asserted.
 """
 
@@ -15,6 +19,7 @@ from pathlib import Path
 
 from app.agents.patch_forge import generate_patch
 from app.agents.verification_lab import run_scenario
+from app.memory import store_verified_fix
 from app.schemas import Finding, PatchProposal, VerificationResult
 
 
@@ -39,6 +44,10 @@ def reverify(
         results.append(post_fix)
 
         if post_fix.result == "RESOLVED":
+            # Store verified fix in memory bank for future Patch Forge lookups
+            cwe_id = finding.cwe[0] if finding.cwe else "UNKNOWN"
+            pattern = current_proposal.diff  # Store the actual diff as the pattern
+            store_verified_fix(cwe_id, "javascript", pattern, finding.finding_id)
             return results, current_proposal
 
         if attempt >= max_correction_attempts:

@@ -2,6 +2,12 @@
 (`npm audit --json`) against an actual cloned repository. No finding here
 is invented: every advisory ID, CVSS score, and CWE comes straight out of
 npm's own audit report.
+
+Grounding Gate: Before a finding reaches Analyst, Hunter resolves its ID
+against OSV.dev, NVD, or GHSA. Three outcomes:
+  - Resolved: attach real record, proceed
+  - Ambiguous: multiple matches, attach all candidates, let Analyst disambiguate
+  - Unresolved: mark UNVERIFIED, do not pass to Analyst as confirmed
 """
 
 from __future__ import annotations
@@ -12,6 +18,7 @@ from pathlib import Path
 
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL
 from app.schemas import Finding, Severity
+from app.grounded_tools import lookup_vulnerability
 
 
 def ensure_repo_cloned(repo_dir: Path = DEMO_REPO_DIR, repo_url: str = DEMO_REPO_URL) -> Path:
@@ -93,11 +100,39 @@ def parse_findings(audit_report: dict, source: str = "npm audit") -> list[Findin
     return findings
 
 
+def _apply_grounding_gate(findings: list[Finding]) -> list[Finding]:
+    """Grounding gate: resolve each finding's advisory_id against real knowledge sources.
+    Return only confirmed findings; mark unresolved as UNVERIFIED (do not pass to Analyst).
+    """
+    grounded = []
+    unverified = []
+
+    for finding in findings:
+        if not finding.advisory_id:
+            unverified.append(finding)
+            continue
+
+        lookup = lookup_vulnerability(finding.advisory_id)
+        if lookup.get("resolved"):
+            finding.verified_advisory_record = lookup.get("record")
+            finding.grounding_source = lookup.get("source")
+            grounded.append(finding)
+        else:
+            finding.grounding_status = "UNVERIFIED"
+            unverified.append(finding)
+
+    if unverified:
+        print(f"[GROUNDING GATE] {len(unverified)} findings unresolved in OSV/NVD/GHSA (marked UNVERIFIED)")
+    return grounded
+
+
 def hunt(repo_dir: Path | None = None) -> list[Finding]:
-    """Full Hunter run: clone (if needed) -> scan -> parse -> return real Findings."""
+    """Full Hunter run: clone (if needed) -> scan -> parse -> apply grounding gate -> return Findings.
+    Grounding gate filters out any findings that don't resolve in real knowledge sources."""
     target = ensure_repo_cloned() if repo_dir is None else repo_dir
     report = run_npm_audit(target)
-    return parse_findings(report)
+    findings = parse_findings(report)
+    return _apply_grounding_gate(findings)
 
 
 if __name__ == "__main__":
