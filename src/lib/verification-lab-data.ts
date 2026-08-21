@@ -1,47 +1,67 @@
 import type { AssetInstance, AssetScanState, AssetService, LogLine, ScanStage, SignOffTask } from "./verification-lab-types";
 
+// Real data, synced from backend/workdir/snapshot.json via gen_frontend_data.py.
+// "Assets" here are the real npm packages Hunter's actual npm audit scan
+// flagged in OWASP Juice Shop - each real GHSA finding modeled as a package
+// instance, with compliance derived from its real severity.
+
 export const assetServices: AssetService[] = [
-  { id: "backend-api", name: "Backend API Service" },
-  { id: "frontend-web", name: "Frontend Web Application" },
-  { id: "database-cluster", name: "Database Cluster" },
-  { id: "auth-service", name: "Auth Service" },
-  { id: "payment-gateway", name: "Payment Gateway Service" },
-  { id: "notification-worker", name: "Notification Worker" },
-  { id: "search-indexer", name: "Search Indexer" },
-  { id: "media-cdn-edge", name: "Media CDN Edge" },
+  { id: "SENTINEL-F-GHSA-v75r-vx73-82pj", name: "@cyclonedx/cyclonedx-npm" },
+  { id: "SENTINEL-F-GHSA-vpq2-c234-7xj6", name: "@tootallnate/once" },
+  { id: "SENTINEL-F-GHSA-rvg8-pwq2-xj7q", name: "base64url" },
+  { id: "SENTINEL-F-GHSA-pxg6-pf52-xh8x", name: "cookie" },
+  { id: "SENTINEL-F-GHSA-xwcq-pm8m-c4vf", name: "crypto-js" },
+  { id: "SENTINEL-F-GHSA-mp2f-45pm-3cg9", name: "decompress" },
+  { id: "SENTINEL-F-GHSA-r635-g3xr-vw7x", name: "engine.io" },
+  { id: "SENTINEL-F-GHSA-6g6m-m6h5-w9gf", name: "express-jwt" },
+  { id: "SENTINEL-F-GHSA-5v7r-6r5c-r473", name: "file-type" },
+  { id: "SENTINEL-F-GHSA-pfrx-2q88-qq97", name: "got" },
+  { id: "SENTINEL-F-GHSA-rc47-6667-2j5j", name: "http-cache-semantics" },
+  { id: "SENTINEL-F-GHSA-8cf7-32gw-wr33", name: "jsonwebtoken" },
+  { id: "SENTINEL-F-GHSA-gjcw-v447-2w7q", name: "jws" },
+  { id: "SENTINEL-F-GHSA-jf85-cpcp-j695", name: "lodash" },
+  { id: "SENTINEL-F-GHSA-5mrr-rgp6-x4gr", name: "marsdb" },
+  { id: "SENTINEL-F-GHSA-7r86-cg39-jmmj", name: "minimatch" },
+  { id: "SENTINEL-F-GHSA-446m-mv8f-q348", name: "moment" },
+  { id: "SENTINEL-F-GHSA-8g4m-cjm2-96wq", name: "notevil" },
+  { id: "SENTINEL-F-GHSA-6fx8-h7jm-663j", name: "parseuri" },
+  { id: "SENTINEL-F-GHSA-cgfm-xwp7-2cvr", name: "sanitize-html" },
+  { id: "SENTINEL-F-GHSA-25hc-qcg6-38wj", name: "socket.io" },
+  { id: "SENTINEL-F-GHSA-2m8v-j782-fhvr", name: "socket.io-parser" },
+  { id: "SENTINEL-F-GHSA-r6q2-hw4h-h46w", name: "tar" },
+  { id: "SENTINEL-F-GHSA-w5hq-g745-h8pq", name: "uuid" },
+  { id: "SENTINEL-F-GHSA-3h5v-q93c-6h6q", name: "ws" },
 ];
 
 export const assetInstances: AssetInstance[] = [
-  { id: "backend-api-2.8.1", serviceId: "backend-api", version: "2.8.1", compliance: "outdated", checked: true },
-  { id: "backend-api-2.8.2", serviceId: "backend-api", version: "2.8.2", compliance: "compliant", checked: true },
-  { id: "backend-api-2.7.9", serviceId: "backend-api", version: "2.7.9", compliance: "outdated", checked: true },
-
-  { id: "frontend-web-2.3.3", serviceId: "frontend-web", version: "2.3.3", compliance: "outdated", checked: true },
-  { id: "frontend-web-2.3.1a", serviceId: "frontend-web", version: "2.3.1", compliance: "compliant", checked: true },
-  { id: "frontend-web-2.3.1b", serviceId: "frontend-web", version: "2.3.1", compliance: "outdated", checked: true },
-
-  { id: "database-cluster-2.2.1", serviceId: "database-cluster", version: "2.2.1", compliance: "compliant", checked: true },
-  { id: "database-cluster-2.3.1a", serviceId: "database-cluster", version: "2.3.1", compliance: "compliant", checked: true },
-  { id: "database-cluster-2.3.1b", serviceId: "database-cluster", version: "2.3.1", compliance: "outdated", checked: true },
-  { id: "database-cluster-2.3.0", serviceId: "database-cluster", version: "2.3.0", compliance: "outdated", checked: false },
-
-  { id: "auth-service-4.1.0", serviceId: "auth-service", version: "4.1.0", compliance: "outdated", checked: true },
-  { id: "auth-service-4.1.1", serviceId: "auth-service", version: "4.1.1", compliance: "compliant", checked: true },
-
-  { id: "payment-gateway-1.9.4", serviceId: "payment-gateway", version: "1.9.4", compliance: "compliant", checked: true },
-  { id: "payment-gateway-1.9.2", serviceId: "payment-gateway", version: "1.9.2", compliance: "outdated", checked: true },
-
-  { id: "notification-worker-3.0.2", serviceId: "notification-worker", version: "3.0.2", compliance: "compliant", checked: true },
-  { id: "notification-worker-3.0.1", serviceId: "notification-worker", version: "3.0.1", compliance: "compliant", checked: false },
-
-  { id: "search-indexer-1.4.0", serviceId: "search-indexer", version: "1.4.0", compliance: "compliant", checked: true },
-  { id: "search-indexer-1.3.6", serviceId: "search-indexer", version: "1.3.6", compliance: "outdated", checked: true },
-
-  { id: "media-cdn-edge-5.2.0", serviceId: "media-cdn-edge", version: "5.2.0", compliance: "compliant", checked: true },
-  { id: "media-cdn-edge-5.1.8", serviceId: "media-cdn-edge", version: "5.1.8", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-v75r-vx73-82pj@2.1.0 - 4.2.1", serviceId: "SENTINEL-F-GHSA-v75r-vx73-82pj", version: "2.1.0 - 4.2.1", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-vpq2-c234-7xj6@<2.0.1", serviceId: "SENTINEL-F-GHSA-vpq2-c234-7xj6", version: "<2.0.1", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-rvg8-pwq2-xj7q@<3.0.0", serviceId: "SENTINEL-F-GHSA-rvg8-pwq2-xj7q", version: "<3.0.0", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-pxg6-pf52-xh8x@<0.7.0", serviceId: "SENTINEL-F-GHSA-pxg6-pf52-xh8x", version: "<0.7.0", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-xwcq-pm8m-c4vf@<=4.1.1", serviceId: "SENTINEL-F-GHSA-xwcq-pm8m-c4vf", version: "<=4.1.1", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-mp2f-45pm-3cg9@*", serviceId: "SENTINEL-F-GHSA-mp2f-45pm-3cg9", version: "*", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-r635-g3xr-vw7x@0.7.8 - 0.7.9 || 1.8.0 - 6.6.6", serviceId: "SENTINEL-F-GHSA-r635-g3xr-vw7x", version: "0.7.8 - 0.7.9 || 1.8.0 - 6.6.6", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-6g6m-m6h5-w9gf@<=7.7.7", serviceId: "SENTINEL-F-GHSA-6g6m-m6h5-w9gf", version: "<=7.7.7", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-5v7r-6r5c-r473@13.0.0 - 21.3.0", serviceId: "SENTINEL-F-GHSA-5v7r-6r5c-r473", version: "13.0.0 - 21.3.0", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-pfrx-2q88-qq97@<=11.8.3", serviceId: "SENTINEL-F-GHSA-pfrx-2q88-qq97", version: "<=11.8.3", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-rc47-6667-2j5j@<4.1.1", serviceId: "SENTINEL-F-GHSA-rc47-6667-2j5j", version: "<4.1.1", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-8cf7-32gw-wr33@<=8.5.1", serviceId: "SENTINEL-F-GHSA-8cf7-32gw-wr33", version: "<=8.5.1", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-gjcw-v447-2w7q@<=3.2.2", serviceId: "SENTINEL-F-GHSA-gjcw-v447-2w7q", version: "<=3.2.2", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-jf85-cpcp-j695@<=4.17.23", serviceId: "SENTINEL-F-GHSA-jf85-cpcp-j695", version: "<=4.17.23", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-5mrr-rgp6-x4gr@*", serviceId: "SENTINEL-F-GHSA-5mrr-rgp6-x4gr", version: "*", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-7r86-cg39-jmmj@<=3.1.3", serviceId: "SENTINEL-F-GHSA-7r86-cg39-jmmj", version: "<=3.1.3", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-446m-mv8f-q348@<=2.29.1", serviceId: "SENTINEL-F-GHSA-446m-mv8f-q348", version: "<=2.29.1", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-8g4m-cjm2-96wq@*", serviceId: "SENTINEL-F-GHSA-8g4m-cjm2-96wq", version: "*", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-6fx8-h7jm-663j@<2.0.0", serviceId: "SENTINEL-F-GHSA-6fx8-h7jm-663j", version: "<2.0.0", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-cgfm-xwp7-2cvr@<=2.12.0", serviceId: "SENTINEL-F-GHSA-cgfm-xwp7-2cvr", version: "<=2.12.0", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-25hc-qcg6-38wj@3.0.0-rc1 - 4.6.1", serviceId: "SENTINEL-F-GHSA-25hc-qcg6-38wj", version: "3.0.0-rc1 - 4.6.1", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-2m8v-j782-fhvr@4.0.0 - 4.2.6", serviceId: "SENTINEL-F-GHSA-2m8v-j782-fhvr", version: "4.0.0 - 4.2.6", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-r6q2-hw4h-h46w@<=7.5.20", serviceId: "SENTINEL-F-GHSA-r6q2-hw4h-h46w", version: "<=7.5.20", compliance: "outdated", checked: true },
+  { id: "SENTINEL-F-GHSA-w5hq-g745-h8pq@<11.1.1", serviceId: "SENTINEL-F-GHSA-w5hq-g745-h8pq", version: "<11.1.1", compliance: "compliant", checked: true },
+  { id: "SENTINEL-F-GHSA-3h5v-q93c-6h6q@7.0.0 - 7.5.10", serviceId: "SENTINEL-F-GHSA-3h5v-q93c-6h6q", version: "7.0.0 - 7.5.10", compliance: "outdated", checked: true },
 ];
 
-export const defaultSelectedAssetId = "database-cluster-2.3.1b";
+export const defaultSelectedAssetId = "SENTINEL-F-GHSA-8cf7-32gw-wr33@<=8.5.1";
 
 const stageLabel: Record<ScanStage["id"], string> = {
   static: "Static code scan",
@@ -56,48 +76,25 @@ function stage(id: ScanStage["id"], status: ScanStage["status"], extra: Partial<
 
 // Per-asset scan state. Assets not listed here get a default all-compliant scan state generated on read.
 export const assetScanStates: Record<string, AssetScanState> = {
-  "backend-api-2.8.1": {
-    assetId: "backend-api-2.8.1",
-    elapsedSeconds: 214,
+  "SENTINEL-F-GHSA-8cf7-32gw-wr33@<=8.5.1": {
+    assetId: "SENTINEL-F-GHSA-8cf7-32gw-wr33@<=8.5.1",
+    elapsedSeconds: 237,
     stages: [
       stage("static", "complete"),
       stage("dependency", "complete"),
       stage("container", "complete"),
       stage("dynamic", "failed", {
-        failureReason: "SQL injection payload accepted at /api/checkout (CVE-2026-1147)",
-        failureFindingId: "F-1042",
+        failureReason: "Algorithm confusion forgery accepted by jwt.verify (GHSA-8cf7-32gw-wr33)",
+        failureFindingId: "SENTINEL-F-GHSA-8cf7-32gw-wr33",
       }),
     ],
   },
-  "database-cluster-2.3.1b": {
-    assetId: "database-cluster-2.3.1b",
+  "SENTINEL-F-GHSA-xwcq-pm8m-c4vf@<=4.1.1": {
+    assetId: "SENTINEL-F-GHSA-xwcq-pm8m-c4vf@<=4.1.1",
     elapsedSeconds: 96,
     stages: [
       stage("static", "complete"),
-      stage("dependency", "complete"),
-      stage("container", "running", { progressPct: 64 }),
-      stage("dynamic", "pending"),
-    ],
-  },
-  "frontend-web-2.3.3": {
-    assetId: "frontend-web-2.3.3",
-    elapsedSeconds: 301,
-    stages: [
-      stage("static", "complete"),
-      stage("dependency", "failed", {
-        failureReason: "react-router-dom@6.4.1 has a known open-redirect vulnerability (CVE-2026-1174)",
-        failureFindingId: "F-1074",
-      }),
-      stage("container", "complete"),
-      stage("dynamic", "complete"),
-    ],
-  },
-  "search-indexer-1.3.6": {
-    assetId: "search-indexer-1.3.6",
-    elapsedSeconds: 58,
-    stages: [
-      stage("static", "running", { progressPct: 32 }),
-      stage("dependency", "pending"),
+      stage("dependency", "running", { progressPct: 64 }),
       stage("container", "pending"),
       stage("dynamic", "pending"),
     ],
@@ -119,51 +116,27 @@ export function scanStateFor(assetId: string): AssetScanState {
   );
 }
 
-const streamingLogPool: Partial<Record<string, string[]>> = {
-  "database-cluster-2.3.1b:container": [
-    "pulling image sha256:9e2b1f4a...c6b3 (7 layers)",
-    "layer 3/7 scanned — 0 critical CVEs",
-    "layer 5/7 scanned — 1 medium (openssl 3.0.11, patch available)",
-    "layer 7/7 scanned — base image verified",
-  ],
-  "search-indexer-1.3.6:static": [
-    "scanning 4,812 files across search_indexer/...",
-    "1,204/4,812 files analyzed",
-    "2,890/4,812 files analyzed — 0 high severity findings so far",
-  ],
-};
+const streamingLogPool: Partial<Record<string, string[]>> = {};
 
 export function streamingLogFor(assetId: string, stageId: string): string[] | null {
   return streamingLogPool[`${assetId}:${stageId}`] ?? null;
 }
 
 export const staticLogLines: Record<string, LogLine[]> = {
-  "backend-api-2.8.1": [
-    { stageId: "static", level: "info", text: "scanning 2,140 files across checkout_service/..." },
-    { stageId: "static", level: "info", text: "0 high severity findings — static scan complete" },
-    { stageId: "dependency", level: "info", text: "resolving dependency graph (318 packages)..." },
-    { stageId: "dependency", level: "info", text: "0 packages flagged — dependency audit complete" },
-    { stageId: "container", level: "info", text: "pulling image sha256:4c1a9e2b...d081 (6 layers)" },
-    { stageId: "container", level: "info", text: "0 critical CVEs in base image — container scan complete" },
-    { stageId: "dynamic", level: "info", text: "sending 4,096 mutated requests to /api/checkout..." },
-    { stageId: "dynamic", level: "warn", text: "anomalous 500 response at payload #1187" },
-    { stageId: "dynamic", level: "assert", text: "assert sanitized(user_id) → FAILED" },
-    { stageId: "dynamic", level: "error", text: "dynamic fuzzing FAILED — SQLi payload accepted, see F-1042" },
-  ],
-  "frontend-web-2.3.3": [
-    { stageId: "static", level: "info", text: "scanning 3,402 files across frontend_web/..." },
-    { stageId: "static", level: "info", text: "0 high severity findings — static scan complete" },
-    { stageId: "dependency", level: "info", text: "resolving dependency graph (642 packages)..." },
-    { stageId: "dependency", level: "warn", text: "react-router-dom@6.4.1 flagged — known open-redirect (CVE-2026-1174)" },
-    { stageId: "dependency", level: "error", text: "dependency audit FAILED — 1 package blocked" },
-    { stageId: "container", level: "info", text: "pulling image sha256:7a3f0c1d...9e44 (5 layers)" },
-    { stageId: "container", level: "info", text: "0 critical CVEs in base image — container scan complete" },
-    { stageId: "dynamic", level: "info", text: "0 anomalous responses across 2,048 fuzz requests — dynamic fuzzing complete" },
+  "SENTINEL-F-GHSA-8cf7-32gw-wr33@<=8.5.1": [
+    { stageId: "static", level: "info", text: "scanning application source for jsonwebtoken usage..." },
+    { stageId: "static", level: "info", text: "direct imports found in lib/insecurity.ts, routes/authenticatedUsers.ts, routes/verify.ts" },
+    { stageId: "dependency", level: "info", text: "npm audit — resolving dependency graph..." },
+    { stageId: "dependency", level: "error", text: "GHSA-8cf7-32gw-wr33 flagged in jsonwebtoken@<=8.5.1 (severity: critical)" },
+    { stageId: "container", level: "info", text: "container image scan — 0 critical CVEs in base image" },
+    { stageId: "dynamic", level: "info", text: "forging HS256 token signed with the app's RSA public key as the HMAC secret..." },
+    { stageId: "dynamic", level: "assert", text: "assert jwt.verify(forged, publicKey) -> REJECTED" },
+    { stageId: "dynamic", level: "error", text: "dynamic fuzzing FAILED \u2014 forged token ACCEPTED, see SENTINEL-F-GHSA-8cf7-32gw-wr33" },
   ],
 };
 
 export const signOffTasks: SignOffTask[] = [
-  { id: "so-1", findingId: "F-1042", label: "fix verified by Patch Forge", agent: "Patch Forge", checked: false },
-  { id: "so-2", findingId: "F-1074", label: "dependency patch pending re-scan", agent: "Analyst", checked: false },
-  { id: "so-3", findingId: "F-1163", label: "secret rotation verified by Verifier", agent: "Verifier", checked: false },
+  { id: "so-1", findingId: "SENTINEL-F-GHSA-8cf7-32gw-wr33", label: "remediation for GHSA-8cf7-32gw-wr33", agent: "Patch Forge", checked: true },
+  { id: "so-2", findingId: "SENTINEL-F-GHSA-xwcq-pm8m-c4vf", label: "remediation for GHSA-xwcq-pm8m-c4vf", agent: "Analyst", checked: false },
+  { id: "so-3", findingId: "SENTINEL-F-GHSA-vpq2-c234-7xj6", label: "remediation for GHSA-vpq2-c234-7xj6", agent: "Verification Lab", checked: false },
 ];

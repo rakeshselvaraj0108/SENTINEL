@@ -10,7 +10,7 @@ export interface RelatedFinding {
   callChain?: string[];
 }
 
-export type LangKey = "cpp" | "python" | "terraform";
+export type LangKey = "typescript" | "json" | "test";
 
 export interface DiffLine {
   kind: "removed" | "added" | "context";

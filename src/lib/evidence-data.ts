@@ -1,128 +1,53 @@
 import type { AuditTrailNode, DwsSeal, SignerIdentity, TestCaseGroup } from "./evidence-types";
 
-export const evidenceFindingId = "F-1042";
-export const evidenceCve = "CVE-2026-1147";
+// Real data, synced from backend/workdir/snapshot.json via gen_frontend_data.py.
+
+export const evidenceFindingId = "SENTINEL-F-GHSA-8cf7-32gw-wr33";
+export const evidenceCve = "GHSA-8cf7-32gw-wr33";
 export const evidenceSummary =
-  "SQL injection via unsanitized user_id concatenated into the checkout order lookup query.";
+  "Algorithm confusion in jsonwebtoken: jwt.verify() accepted a token forged with HS256 and signed using the app's own RSA public key as the HMAC secret, because no `algorithms` restriction was enforced (GHSA-8cf7-32gw-wr33).";
 
 export const reachabilityChecks = [
-  "Reachability path confirmed: handleCheckout() → buildQuery() → db.execute()",
-  "Vulnerable path is externally reachable from POST /api/checkout",
+  "Reachability path confirmed: jsonwebtoken imported directly in lib/insecurity.ts, routes/authenticatedUsers.ts, routes/verify.ts",
+  "Vulnerable call site: jwt.verify(token, publicKey, callback) in updateAuthenticatedUsers() — lib/insecurity.ts:189, reached on every authenticated request",
 ];
 
 export const sandboxVerificationChecks = [
-  { id: "runsc-8841", note: "confirmed exploitable pre-patch, unsanitized input reached db.execute()" },
-  { id: "runsc-8842", note: "confirmed resolved post-patch, parameterized bind verified" },
+  { id: "sandbox-76917b859255", note: "confirmed exploitable pre-patch on master \u2014 jsonwebtoken@0.4.0 accepted a forged HS256 token signed with the RSA public key as the HMAC secret (135780ms)" },
+  { id: "sandbox-fac1cd307245", note: "confirmed resolved post-patch on the fix branch \u2014 jsonwebtoken@^9.0.0 rejected the same forged token with 'invalid algorithm' (101359ms)" },
 ];
 
 export const commitInfo = {
-  file: "checkout_service/order_lookup.cpp",
-  commitHash: "a81f92c3f5e6d0b8471c9e2a7d3f6081b5c9e4a2",
+  file: "lib/insecurity.ts",
+  commitHash: "55e6cf35be0405f8be23247eac5ef9f64e714a5c",
 };
 
 export const evidenceDiff = [
-  { kind: "removed" as const, text: 'std::string q = "SELECT * FROM orders WHERE id=" + user_id;' },
-  { kind: "removed" as const, text: "sqlite3_exec(db_, q.c_str(), callback, nullptr, &err_msg);" },
-  { kind: "added" as const, text: 'sqlite3_prepare_v2(db_, "SELECT * FROM orders WHERE id=?", -1, &stmt, nullptr);' },
-  { kind: "added" as const, text: "sqlite3_bind_text(stmt, 1, user_id.c_str(), -1, SQLITE_TRANSIENT);" },
+  { kind: "removed" as const, text: "export const isAuthorized = () => expressJwt(({ secret: publicKey }) as any)" },
+  { kind: "added" as const, text: "export const isAuthorized = () => expressJwt({ secret: publicKey, algorithms: ['RS256'] })" },
+  { kind: "removed" as const, text: "jwt.verify(token, publicKey, (err: Error | null, decoded: any) => {" },
+  { kind: "added" as const, text: "jwt.verify(token, publicKey, { algorithms: ['RS256'] }, (err: Error | null, decoded: any) => {" },
+  { kind: "removed" as const, text: "\"jsonwebtoken\": \"0.4.0\"," },
+  { kind: "added" as const, text: "\"jsonwebtoken\": \"^9.0.0\"," },
 ];
 
 export const testGroups: TestCaseGroup[] = [
   {
-    id: "regression",
-    label: "Regression tests",
-    passed: 18,
-    total: 18,
+    id: "generated-regression",
+    label: "Patch Forge generated tests",
+    passed: 1,
+    total: 1,
     tests: [
-      "test_order_lookup_returns_correct_row",
-      "test_order_lookup_missing_id_returns_404",
-      "test_order_lookup_numeric_id",
-      "test_order_lookup_alpha_id_rejected",
-      "test_order_lookup_empty_id_rejected",
-      "test_order_lookup_sql_metacharacters_escaped",
-      "test_order_lookup_unicode_id",
-      "test_order_lookup_max_length_id",
-      "test_order_lookup_concurrent_requests",
-      "test_order_lookup_db_connection_reuse",
-      "test_order_lookup_prepared_statement_cache",
-      "test_order_lookup_response_schema_unchanged",
-      "test_order_lookup_latency_within_budget",
-      "test_order_lookup_error_message_no_sql_leak",
-      "test_order_lookup_auth_required",
-      "test_order_lookup_rate_limit_respected",
-      "test_order_lookup_logging_redacts_pii",
-      "test_order_lookup_rollback_on_failure",
-    ],
-  },
-  {
-    id: "integration",
-    label: "Integration tests",
-    passed: 6,
-    total: 6,
-    tests: [
-      "test_checkout_flow_end_to_end",
-      "test_checkout_order_lookup_service_contract",
-      "test_checkout_payment_gateway_handoff",
-      "test_checkout_inventory_hold_release",
-      "test_checkout_waf_rule_allows_legit_traffic",
-      "test_checkout_waf_rule_blocks_known_payloads",
-    ],
-  },
-  {
-    id: "sqli-regression",
-    label: "SQLi payload regression",
-    passed: 4,
-    total: 4,
-    tests: [
-      "test_sqli_payload_union_select_blocked",
-      "test_sqli_payload_boolean_blind_blocked",
-      "test_sqli_payload_stacked_query_blocked",
-      "test_sqli_payload_time_based_blocked",
+      "insecurity > updateAuthenticatedUsers > should reject HS256 token signed with RSA public key when algorithms are restricted",
     ],
   },
 ];
 
 export const auditTrail: AuditTrailNode[] = [
-  {
-    id: "hunter",
-    actor: "hunter",
-    action: "approved finding",
-    detail: "F-1042 flagged from SCA scan of checkout_service dependency manifest",
-    timestamp: "2026-08-19T14:02:11Z",
-    highlightTarget: "summary",
-  },
-  {
-    id: "analyst",
-    actor: "analyst",
-    action: "confirmed relevance",
-    detail: "reachability confirmed via static call-graph analysis",
-    timestamp: "2026-08-19T14:02:27Z",
-    highlightTarget: "reachability",
-  },
-  {
-    id: "patch-forge",
-    actor: "patch-forge",
-    action: "proposed fix",
-    detail: "parameterized query (C++), parameterized query (Python), WAF rule (Terraform)",
-    timestamp: "2026-08-19T14:03:15Z",
-    highlightTarget: "evidence-pack",
-  },
-  {
-    id: "verifier",
-    actor: "verifier",
-    action: "confirmed resolution",
-    detail: "sandbox re-verification passed, 28/28 tests green",
-    timestamp: "2026-08-19T14:04:02Z",
-    highlightTarget: "reverify",
-  },
-  {
-    id: "human",
-    actor: "human",
-    action: "final approval",
-    detail: "reviewed evidence pack and sealed the record",
-    timestamp: "2026-08-19T14:06:48Z",
-    highlightTarget: "signoff",
-  },
+  { id: "hunter", actor: "hunter", action: "ingestion verified", detail: "Detected GHSA-8cf7-32gw-wr33 in jsonwebtoken@<=8.5.1 (severity: critical)", timestamp: "2026-08-21T03:55:48.475847+00:00", highlightTarget: "summary" },
+  { id: "analyst", actor: "analyst", action: "reachability confirmed", detail: "Direct imports confirmed in lib/insecurity.ts, routes/authenticatedUsers.ts, routes/verify.ts", timestamp: "2026-08-21T03:55:48.476850+00:00", highlightTarget: "reachability" },
+  { id: "verifier", actor: "verifier", action: "sandbox scenario: exploit confirmed then resolved", detail: "Pre-patch: forged HS256 token ACCEPTED on master (sandbox-76917b859255, 135780ms)). Post-patch: same token REJECTED on the fix branch (sandbox-fac1cd307245, 101359ms)).", timestamp: "2026-08-21T03:55:48.476850+00:00", highlightTarget: "reverify" },
+  { id: "patch-forge", actor: "patch-forge", action: "remediation generated", detail: "algorithms: ['RS256'] restriction added + jsonwebtoken bumped to ^9.0.0 in package.json", timestamp: "2026-08-21T03:55:48.477852+00:00", highlightTarget: "evidence-pack" },
 ];
 
 export const signers: SignerIdentity[] = [
@@ -131,26 +56,12 @@ export const signers: SignerIdentity[] = [
     name: "patch-forge-agent",
     kind: "service",
     role: "service identity",
-    signatureHash: "sigstore:sha256:7e2a19c4f0b8d6e1a3c5f9b2d4e6a8c0f1b3d5e7",
-  },
-  {
-    id: "re-verifier-agent",
-    name: "re-verifier-agent",
-    kind: "service",
-    role: "service identity",
-    signatureHash: "sigstore:sha256:c9d1b4a6e8f0a2c4b6d8e0f2a4c6b8d0e2f4a6c8",
-  },
-  {
-    id: "priya-nandakumar",
-    name: "Priya Nandakumar",
-    kind: "human",
-    role: "Security Lead, final reviewer",
-    signatureHash: "sigstore:sha256:4f6a8c0e2b4d6f8a0c2e4b6d8f0a2c4e6b8d0f2a",
+    signatureHash: "sha256:136c6433af91e4e05d927a1ce900ab1ff81a2804d90c38ba91533a47d61619ce",
   },
 ];
 
 export const dwsSeal: DwsSeal = {
-  documentId: "nutrient:doc-id:8f2c1a9e-6b3d-4c7e-9a1f-5d8b2e4c6a0f",
-  verificationId: "DWS-VRF-2026-081947-F1042",
-  sealedAt: "2026-08-19T14:06:52Z",
+  documentId: "sentinel:evidence:SENTINEL-F-GHSA-8cf7-32gw-wr33",
+  verificationId: "sha256:136c6433af91e4e05d927a1ce900ab1ff81a2804d90c38ba91533a47d61619ce",
+  sealedAt: "2026-08-21T03:55:48.477852+00:00",
 };

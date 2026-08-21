@@ -47,17 +47,15 @@ export function useVerificationRun(active: boolean): VerificationRun {
     return () => clearInterval(id);
   }, [active]);
 
-  const [sqliContainer, integrationContainer] = containers;
-  const unitDone = sqliContainer.progressPct >= 30;
-  const sqliDone = sqliContainer.progressPct >= 100;
-  const integrationRunning = integrationContainer.progressPct > 0;
-  const integrationDone = integrationContainer.progressPct >= 100;
-  const allPassed = sqliDone && integrationDone;
+  const [container0, container1] = containers;
+  const container0Done = container0.progressPct >= 100;
+  const container1Running = container1.progressPct > 0;
+  const container1Done = container1.progressPct >= 100;
+  const allPassed = container0Done && container1Done;
 
   const statusOf = (id: string): TestRunStatus => {
-    if (id === "unit") return unitDone ? "passed" : "running";
-    if (id === "sqli") return sqliDone ? "passed" : sqliContainer.progressPct > 0 ? "running" : "queued";
-    if (id === "integration") return integrationDone ? "passed" : integrationRunning ? "running" : "queued";
+    if (id === "container-0") return container0Done ? "passed" : container0.progressPct > 0 ? "running" : "queued";
+    if (id === "container-1") return container1Done ? "passed" : container1Running ? "running" : "queued";
     return allPassed ? "passed" : "running";
   };
 
@@ -65,7 +63,7 @@ export function useVerificationRun(active: boolean): VerificationRun {
 
   const claims: RemediationClaim[] = initialClaims.map((c) => ({
     ...c,
-    status: c.id === "claim-parameterized" ? (sqliDone ? "confirmed" : "pending") : integrationDone ? "confirmed" : "pending",
+    status: c.id === "claim-algorithms" ? (container0Done ? "confirmed" : "pending") : container1Done ? "confirmed" : "pending",
   }));
 
   const auditLog: AuditLogEntry = { ...initialAuditLog, sealed: allPassed };
