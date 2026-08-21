@@ -24,6 +24,7 @@ import subprocess
 from pathlib import Path
 
 from app.agents.reachability import find_reachability_evidence
+from app.governance import model_armor
 from app.llm import call_gemini
 from app.schemas import Finding, PatchProposal
 
@@ -181,6 +182,12 @@ def generate_patch(
     target_relpath = matches[0].file
     target_path = repo_dir / target_relpath
     original_content = target_path.read_text(encoding="utf-8")
+
+    armor_result = model_armor.scan(original_content, source=target_relpath)
+    if not armor_result.clean:
+        raise PermissionError(
+            f"Model Armor blocked {target_relpath} before it reached the LLM prompt: {armor_result.findings}"
+        )
 
     base_prompt = _build_prompt(finding, target_relpath, original_content)
     if verification_feedback:

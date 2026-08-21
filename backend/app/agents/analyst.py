@@ -10,6 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.agents.reachability import ReachabilityMatch, find_reachability_evidence
+from app.governance import model_armor
 from app.llm import call_gemini
 from app.schemas import Finding, RelevanceVerdict, RelevanceVerdictValue
 
@@ -63,6 +64,13 @@ Respond with a verdict and 2-4 sentences of concrete reasoning that references t
 def analyze(finding: Finding, repo_dir: Path) -> RelevanceVerdict:
     matches = find_reachability_evidence(repo_dir, finding.component)
     evidence_text = _format_evidence(matches)
+
+    armor_result = model_armor.scan(evidence_text, source=f"reachability evidence for {finding.component}")
+    if not armor_result.clean:
+        raise PermissionError(
+            f"Model Armor blocked reachability evidence before it reached the LLM prompt: {armor_result.findings}"
+        )
+
     prompt = _build_prompt(finding, evidence_text)
 
     raw = call_gemini(prompt, response_schema=_VERDICT_SCHEMA)

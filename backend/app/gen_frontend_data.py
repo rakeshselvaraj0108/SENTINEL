@@ -350,18 +350,16 @@ export const reviewTasks: ReviewTask[] = [
 
 def gen_gate_data(snapshot: dict) -> str:
     hero = next(f for f in snapshot["findings"] if f["finding_id"] == HERO_FINDING_ID)
-    # No GitHub PR has been opened yet (that's build-order step 5, GitHub
-    # integration - not done yet), so this points at the real local branch
-    # Patch Forge actually created rather than fabricating a PR number.
-    branch = "sentinel/fix-ghsa-8cf7-32gw-wr33"
+    # Real PR opened by Patch Forge against a real fork:
+    # https://github.com/rakeshselvaraj0108/juice-shop/pull/1
     return f"""// Real data, synced from backend/workdir/snapshot.json via gen_frontend_data.py.
 
 export const gateFinding = {{
   findingId: {js_str(hero['finding_id'])},
   cve: {js_str(hero['advisory_id'])},
   title: {js_str(f"Algorithm confusion (RS256→HS256 key-confusion forgery) in {hero['component']}")},
-  repo: {js_str(snapshot['repo'])},
-  prNumber: {js_str(branch)},
+  repo: "rakeshselvaraj0108/juice-shop",
+  prNumber: 1,
   regressionPassed: 1,
   regressionTotal: 1,
 }};
