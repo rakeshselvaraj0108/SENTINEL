@@ -148,6 +148,32 @@ export function getEvidence(findingId: string): Promise<Record<string, unknown>>
   return apiFetch(`/api/evidence/${encodeURIComponent(findingId)}`);
 }
 
+export interface ModelArmorLogEntry {
+  ts: string;
+  agent: string;
+  source: string;
+  severity: "clean" | "blocked";
+  text: string;
+}
+
+export function getModelArmorLog(limit = 200): Promise<{ log: ModelArmorLogEntry[] }> {
+  return apiFetch(`/api/model-armor-log?limit=${limit}`);
+}
+
+export interface PolicyEvalResult {
+  agent: string;
+  action: string;
+  decision: "allowed" | "blocked" | "requires_human";
+  reason: string;
+}
+
+export function evaluatePolicyLive(agent: string, action: string): Promise<PolicyEvalResult> {
+  return apiFetch("/api/policy/evaluate", {
+    method: "POST",
+    body: JSON.stringify({ agent, action }),
+  });
+}
+
 export function postDecision(
   findingId: string,
   decision: "approved" | "rejected",

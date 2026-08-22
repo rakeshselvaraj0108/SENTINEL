@@ -3,13 +3,80 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   abortJob,
+  getGatewayLog,
+  getModelArmorLog,
+  getRegistry,
   getState,
   startInvestigation,
   SentinelApiError,
   type CommandCenterState,
+  type GatewayLogEntry,
+  type ModelArmorLogEntry,
+  type RegistryEntry,
 } from "./api";
 
 const POLL_INTERVAL_MS = 2000;
+
+/**
+ * Generic poll-on-interval hook shared by the simpler read-only resources
+ * (registry, gateway log, model armor log) - same real-time-via-polling
+ * approach as useCommandCenterState, just without the job start/abort
+ * mutations that only the Command Center needs.
+ */
+function usePolledResource<T>(fetcher: () => Promise<T>, intervalMs = POLL_INTERVAL_MS) {
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(true);
+  const fetcherRef = useRef(fetcher);
+  useEffect(() => {
+    fetcherRef.current = fetcher;
+  }, [fetcher]);
+
+  const poll = useCallback(async () => {
+    try {
+      const next = await fetcherRef.current();
+      if (!mounted.current) return;
+      setData(next);
+      setError(null);
+    } catch (err) {
+      if (!mounted.current) return;
+      setError(err instanceof SentinelApiError ? err.message : "Failed to reach the agent engine.");
+    } finally {
+      if (mounted.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    const kickoff = setTimeout(poll, 0);
+    const id = setInterval(poll, intervalMs);
+    return () => {
+      mounted.current = false;
+      clearTimeout(kickoff);
+      clearInterval(id);
+    };
+  }, [poll, intervalMs]);
+
+  return { data, loading, error };
+}
+
+export function useRegistry() {
+  const { data, loading, error } = usePolledResource<{ agents: RegistryEntry[] }>(getRegistry, 5000);
+  return { agents: data?.agents ?? [], loading, error };
+}
+
+export function useGatewayLog(limit = 100) {
+  const fetcher = useCallback(() => getGatewayLog(limit), [limit]);
+  const { data, loading, error } = usePolledResource<{ log: GatewayLogEntry[] }>(fetcher, 2000);
+  return { log: data?.log ?? [], loading, error };
+}
+
+export function useModelArmorLog(limit = 100) {
+  const fetcher = useCallback(() => getModelArmorLog(limit), [limit]);
+  const { data, loading, error } = usePolledResource<{ log: ModelArmorLogEntry[] }>(fetcher, 5000);
+  return { log: data?.log ?? [], loading, error };
+}
 
 interface UseCommandCenterStateResult {
   state: CommandCenterState | null;

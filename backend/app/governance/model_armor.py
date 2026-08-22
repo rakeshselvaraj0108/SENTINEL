@@ -10,8 +10,14 @@ change.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
+
+from app.config import WORKDIR
+
+MODEL_ARMOR_LOG_PATH = WORKDIR / "model_armor_log.jsonl"
 
 _INJECTION_PATTERNS = [
     re.compile(r"ignore (all|the|any) (previous|prior|above) instructions", re.IGNORECASE),
@@ -36,12 +42,32 @@ class ScanResult:
     findings: list[str]
 
 
-def scan(content: str, *, source: str) -> ScanResult:
+def _log_event(agent: str, source: str, result: ScanResult) -> None:
+    entry = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "agent": agent,
+        "source": source,
+        "severity": result.severity,
+        "text": "; ".join(result.findings) if result.findings else f"{source} scanned - clean",
+    }
+    with MODEL_ARMOR_LOG_PATH.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
+
+def read_log(limit: int = 200) -> list[dict]:
+    if not MODEL_ARMOR_LOG_PATH.exists():
+        return []
+    lines = MODEL_ARMOR_LOG_PATH.read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines[-limit:]]
+
+
+def scan(content: str, *, source: str, agent: str = "unknown") -> ScanResult:
     """Scans real untrusted content (a file, a commit message, a README)
     before it's allowed into an LLM prompt. Injection attempts are blocked
     outright; PII matches are flagged but don't block (the content may
     legitimately need review) - same severity model the Guardrails page
-    displays."""
+    displays. Every real scan is persisted to MODEL_ARMOR_LOG_PATH so the
+    Governance page's guardrail feed reflects actual scans, not fixtures."""
     findings: list[str] = []
 
     for pattern in _INJECTION_PATTERNS:
@@ -49,7 +75,9 @@ def scan(content: str, *, source: str) -> ScanResult:
             findings.append(f"prompt injection pattern matched in {source}: {pattern.pattern!r}")
 
     if findings:
-        return ScanResult(clean=False, severity="blocked", findings=findings)
+        result = ScanResult(clean=False, severity="blocked", findings=findings)
+        _log_event(agent, source, result)
+        return result
 
     pii_hits = []
     for label, pattern in _PII_PATTERNS:
@@ -58,4 +86,6 @@ def scan(content: str, *, source: str) -> ScanResult:
     if pii_hits:
         findings.append(f"PII pattern(s) detected in {source}: {', '.join(pii_hits)}")
 
-    return ScanResult(clean=True, severity="clean", findings=findings)
+    result = ScanResult(clean=True, severity="clean", findings=findings)
+    _log_event(agent, source, result)
+    return result

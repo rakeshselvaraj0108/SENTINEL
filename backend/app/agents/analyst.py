@@ -55,7 +55,7 @@ def analyze(finding: Finding, repo_dir: Path) -> RelevanceVerdict:
     )
 
     # Scan for injection/PII before LLM
-    armor_result = model_armor.scan(prompt, source=f"analyst prompt for {finding.advisory_id}")
+    armor_result = model_armor.scan(prompt, source=f"analyst prompt for {finding.advisory_id}", agent="analyst")
     if not armor_result.clean:
         raise PermissionError(f"Model Armor blocked analyst prompt: {armor_result.findings}")
 

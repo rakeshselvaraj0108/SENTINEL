@@ -206,7 +206,7 @@ def generate_patch(
     target_path = repo_dir / target_relpath
     original_content = target_path.read_text(encoding="utf-8")
 
-    armor_result = model_armor.scan(original_content, source=target_relpath)
+    armor_result = model_armor.scan(original_content, source=target_relpath, agent="patch-forge")
     if not armor_result.clean:
         raise PermissionError(
             f"Model Armor blocked {target_relpath} before it reached the LLM prompt: {armor_result.findings}"

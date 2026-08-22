@@ -4,7 +4,8 @@ export type AgentId =
   | "verifier"
   | "patch-forge"
   | "re-verifier"
-  | "watchdog";
+  | "watchdog"
+  | "evidence-agent";
 
 export type AgentStatus = "active" | "idle" | "error";
 

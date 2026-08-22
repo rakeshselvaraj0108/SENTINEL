@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from app import decisions
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
-from app.governance import gateway, registry
+from app.governance import gateway, identity, model_armor, registry
 from app.queue import get_queue
 from app.store import get_store
 
@@ -208,6 +208,31 @@ def get_registry():
 @app.get("/api/gateway-log")
 def get_gateway_log(limit: int = 200):
     return {"log": gateway.read_log(limit=limit)}
+
+
+@app.get("/api/model-armor-log")
+def get_model_armor_log(limit: int = 200):
+    return {"log": model_armor.read_log(limit=limit)}
+
+
+class PolicyEvalRequest(BaseModel):
+    agent: str
+    action: str
+
+
+@app.post("/api/policy/evaluate")
+def evaluate_policy(req: PolicyEvalRequest):
+    """Runs the real identity.evaluate() - the exact function the live
+    Gateway's permission check is built on (see governance/identity.py) -
+    so the Governance page's simulator is genuinely testing the same policy
+    code that governs live tool calls, not a parallel reimplementation."""
+    agent_id = req.agent.strip().lower()
+    action = req.action.strip()
+    decision, reason = identity.evaluate(agent_id, action)
+    approved = registry.is_approved(agent_id)
+    if decision == "allowed" and not approved:
+        decision, reason = "blocked", f"agent '{agent_id}' is not approved in the Agent Registry"
+    return {"agent": agent_id, "action": action, "decision": decision, "reason": reason}
 
 
 @app.get("/api/system-info")

@@ -8,14 +8,15 @@ import { AgentRegistryPanel } from "./AgentRegistryPanel";
 import { AgentIdentityPanel } from "./AgentIdentityPanel";
 import { AgentGatewayPanel } from "./gateway/AgentGatewayPanel";
 import { ModelArmorPanel } from "./ModelArmorPanel";
-import { registeredAgents } from "@/lib/governance-data";
+import { useRegistry } from "@/lib/sentinel/hooks";
 import type { AgentId } from "@/lib/types";
 
 export function GovernancePage() {
   const [selectedAgent, setSelectedAgent] = useState<AgentId | null>(null);
+  const { agents, loading, error } = useRegistry();
 
   const handleSelect = (id: AgentId) => setSelectedAgent((prev) => (prev === id ? null : id));
-  const selectedName = registeredAgents.find((a) => a.id === selectedAgent)?.name;
+  const selectedName = agents.find((a) => a.id === selectedAgent)?.name;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -38,8 +39,8 @@ export function GovernancePage() {
             )}
           </div>
           <main className="grid min-h-0 flex-1 grid-cols-1 grid-rows-4 gap-3 overflow-auto p-3 lg:grid-cols-2 lg:grid-rows-2">
-            <AgentRegistryPanel selectedAgent={selectedAgent} onSelect={handleSelect} />
-            <AgentIdentityPanel selectedAgent={selectedAgent} />
+            <AgentRegistryPanel agents={agents} loading={loading} error={error} selectedAgent={selectedAgent} onSelect={handleSelect} />
+            <AgentIdentityPanel agents={agents} loading={loading} error={error} selectedAgent={selectedAgent} />
             <AgentGatewayPanel selectedAgent={selectedAgent} />
             <ModelArmorPanel selectedAgent={selectedAgent} />
           </main>
