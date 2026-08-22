@@ -25,7 +25,12 @@ from app.agents.verification_lab import run_scenario
 from app.config import DEMO_REPO_DIR
 from app.governance.gateway import enforce
 from app.observability import traced_agent
-from app.schemas import Finding
+from app.schemas import (
+    Finding,
+    PatchProposal,
+    RelevanceVerdict,
+    VerificationResult,
+)
 
 _REPO_DIR = DEMO_REPO_DIR
 
@@ -92,33 +97,57 @@ def patch_forge_generate_patch(finding_id: str, verification_feedback: str = "")
 
 @traced_agent("re-verifier")
 @enforce("re-verifier", "trigger_patch")
-def re_verifier_confirm_fix(finding_id: str, branch_name: str) -> dict:
+def re_verifier_confirm_fix(finding_id: str, branch_name: str, patch_proposal: dict | None = None) -> dict:
     """Runs the real Re-Verifier loop: re-runs the Verification Lab scenario
     against the master baseline and the fix branch, and - if the fix branch
     is still exploitable - triggers one real corrective Patch Forge attempt
-    grounded in that observed failure, then re-checks again."""
+    grounded in that observed failure, then re-checks again. Returns the
+    real, final PatchProposal actually confirmed (which may be a corrected
+    one, not necessarily the one passed in) so downstream evidence sealing
+    reflects what was actually verified, not the first attempt."""
     finding = _find_finding(finding_id)
-    from app.schemas import PatchProposal
 
-    proposal = PatchProposal(
-        finding_id=finding_id, branch_name=branch_name, files_changed=[], diff="",
-        generated_test_paths=[], explanation="",
+    proposal = (
+        PatchProposal(**patch_proposal)
+        if patch_proposal
+        else PatchProposal(
+            finding_id=finding_id, branch_name=branch_name, files_changed=[], diff="",
+            generated_test_paths=[], explanation="",
+        )
     )
     results, final_proposal = reverify(finding, _REPO_DIR, proposal)
     return {
         "results": [r.model_dump(mode="json") for r in results],
-        "final_branch": final_proposal.branch_name,
-        "final_files_changed": final_proposal.files_changed,
+        "final_patch_proposal": final_proposal.model_dump(mode="json"),
     }
 
 
 @traced_agent("evidence-agent")
 @enforce("evidence-agent", "write_evidence")
-def evidence_agent_seal_record(finding_id: str) -> dict:
+def evidence_agent_seal_record(
+    finding_id: str,
+    verdict: dict | None = None,
+    verification_results: list[dict] | None = None,
+    patch_proposal: dict | None = None,
+) -> dict:
     """Runs the real Evidence Agent: reassembles the finding's full real
     timeline (Hunter, Analyst, Verification Lab, Patch Forge output already
     on disk / re-derivable) into the canonical EvidenceObject and computes a
-    real SHA-256 signature over it."""
+    real SHA-256 signature over it. `verdict`, `verification_results`, and
+    `patch_proposal`, when given, are the exact real dicts already returned
+    by the earlier stages in this same pipeline run - passing them through
+    (rather than re-deriving or dropping them) is what makes the final
+    evidence timeline actually reflect what happened, instead of only ever
+    containing a single "Hunter detected it" entry."""
     finding = _find_finding(finding_id)
-    evidence = assemble_evidence(finding=finding, repo="juice-shop/juice-shop", repo_dir=_REPO_DIR)
+    evidence = assemble_evidence(
+        finding=finding,
+        repo="juice-shop/juice-shop",
+        verdict=RelevanceVerdict(**verdict) if verdict else None,
+        verification_results=(
+            [VerificationResult(**vr) for vr in verification_results] if verification_results else None
+        ),
+        patch_proposal=PatchProposal(**patch_proposal) if patch_proposal else None,
+        repo_dir=_REPO_DIR,
+    )
     return evidence.model_dump(mode="json")

@@ -42,19 +42,19 @@ def query_osv(package: str, ecosystem: str, version: str | None = None) -> dict[
 
 
 def resolve_ghsa_id(ghsa_id: str) -> dict[str, Any]:
-    """Look up a GHSA ID by searching OSV (mirrors GitHub data).
+    """Look up a vulnerability directly by its own ID (GHSA-*, real OSV IDs,
+    etc.) via OSV's real GET /v1/vulns/{id} endpoint - the correct real
+    lookup for "I already have an ID, give me its record", as opposed to
+    /v1/query which resolves a package+ecosystem+version to whatever IDs
+    affect it (see query_osv above).
 
-    Returns the first match or empty dict if not found.
+    Returns the vulnerability record, or {} if not found.
     """
     try:
-        resp = requests.post(
-            f"{BASE_URL}/query",
-            json={"query": ghsa_id},
-            timeout=TIMEOUT
-        )
+        resp = requests.get(f"{BASE_URL}/vulns/{ghsa_id}", timeout=TIMEOUT)
+        if resp.status_code == 404:
+            return {}
         resp.raise_for_status()
-        data = resp.json()
-        vulns = data.get("vulnerabilities", [])
-        return vulns[0] if vulns else {}
+        return resp.json()
     except Exception:
         return {}

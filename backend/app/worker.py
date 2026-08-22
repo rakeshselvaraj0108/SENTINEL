@@ -32,11 +32,18 @@ def run_investigation(finding_id: str) -> dict:
     """The real six-stage loop, stages 2-6 (Hunter's scan already ran to
     produce finding_id in the first place). Every step below is the exact
     same real function a synchronous CLI run would call - async execution
-    changes when it runs, never what it does."""
+    changes when it runs, never what it does. Each stage's real output is
+    threaded into the next, ending with Evidence Agent sealing the actual
+    verdict/patch/re-verification results - not just a bare "detected" entry."""
     verdict = analyst_assess_relevance(finding_id)
     patch = patch_forge_generate_patch(finding_id)
-    reverify_result = re_verifier_confirm_fix(finding_id, patch["branch_name"])
-    evidence = evidence_agent_seal_record(finding_id)
+    reverify_result = re_verifier_confirm_fix(finding_id, patch["branch_name"], patch_proposal=patch)
+    evidence = evidence_agent_seal_record(
+        finding_id,
+        verdict=verdict,
+        verification_results=reverify_result["results"],
+        patch_proposal=reverify_result["final_patch_proposal"],
+    )
     return {
         "verdict": verdict,
         "patch": patch,

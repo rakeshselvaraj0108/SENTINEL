@@ -126,16 +126,55 @@ if checkpw(user_input.encode(), hashed):
             },
         ],
     },
+    "CWE-327": {
+        "name": "Use of a Broken or Risky Cryptographic Algorithm",
+        "languages": ["javascript", "typescript", "python"],
+        "patterns": [
+            {
+                "language": "javascript",
+                "description": (
+                    "OWASP JWT Cheat Sheet: explicitly allowlist accepted "
+                    "signing algorithms and key types on verify, and reject "
+                    "any token whose header algorithm doesn't match the key "
+                    "type actually configured (the concrete fix for "
+                    "algorithm-confusion / legacy-key-type advisories such "
+                    "as GHSA-8cf7-32gw-wr33)"
+                ),
+                "code_snippet": """
+const jwt = require('jsonwebtoken');
+// Explicitly restrict to the algorithm(s) this key type is meant for -
+// never let the token header pick the algorithm for you.
+const decoded = jwt.verify(token, publicKey, {
+  algorithms: ['RS256'],
+});
+""",
+            },
+            {
+                "language": "python",
+                "description": "PyJWT: pin the algorithms parameter, never trust the token header's alg claim",
+                "code_snippet": """
+import jwt
+
+decoded = jwt.decode(token, public_key, algorithms=["RS256"])
+""",
+            },
+        ],
+    },
 }
 
 
 def get_pattern_by_cwe(cwe_id: str) -> dict[str, Any] | None:
-    """Return remediation pattern for a CWE ID, or None if not found."""
-    return REMEDIATION_PATTERNS.get(cwe_id)
+    """Return remediation pattern for a CWE ID, or None if not found.
+    Case-insensitive: callers pass CWE ids in whatever case they have them
+    in (Hunter/OSV records are typically "CWE-327"; some callers lowercase
+    them) - the pattern library itself is the canonical source, so it
+    normalizes rather than silently failing to match on case alone."""
+    return REMEDIATION_PATTERNS.get(cwe_id.upper())
 
 
 def get_pattern_for_language(cwe_id: str, language: str) -> str | None:
     """Return code snippet for a specific CWE + language combination."""
+    cwe_id = cwe_id.upper()
     pattern = REMEDIATION_PATTERNS.get(cwe_id)
     if not pattern:
         return None

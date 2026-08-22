@@ -2,13 +2,31 @@
 
 import clsx from "clsx";
 import { Panel } from "../Panel";
-import { replaySteps } from "@/lib/mock-data";
+import type { ReplayStep } from "@/lib/types";
 
 interface ReplayTimelinePanelProps {
+  replaySteps: ReplayStep[];
   jumpedStepId?: string | null;
+  loading?: boolean;
+  error?: string | null;
 }
 
-export function ReplayTimelinePanel({ jumpedStepId }: ReplayTimelinePanelProps) {
+export function ReplayTimelinePanel({ replaySteps, jumpedStepId, loading, error }: ReplayTimelinePanelProps) {
+  if (loading && replaySteps.length === 0) {
+    return (
+      <Panel title="Replay Timeline" bodyClassName="flex items-center justify-center px-4 py-3">
+        <span className="text-[11px] text-text-dim">loading…</span>
+      </Panel>
+    );
+  }
+  if (error && replaySteps.length === 0) {
+    return (
+      <Panel title="Replay Timeline" bodyClassName="flex items-center justify-center px-4 py-3">
+        <span className="text-[11px] text-danger">unreachable</span>
+      </Panel>
+    );
+  }
+
   return (
     <Panel title="Replay Timeline" bodyClassName="flex items-center px-4 py-3">
       <div className="flex w-full items-center">

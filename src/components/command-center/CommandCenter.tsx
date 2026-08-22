@@ -9,8 +9,8 @@ import { VerificationStatePanel } from "./panels/VerificationStatePanel";
 import { ReplayTimelinePanel } from "./panels/ReplayTimelinePanel";
 import { EvidenceVaultPanel } from "./panels/EvidenceVaultPanel";
 import { AgentRegistryPanel } from "./panels/AgentRegistryPanel";
+import { useCommandCenterState } from "@/lib/sentinel/hooks";
 import type { AgentId } from "@/lib/types";
-import { replaySteps } from "@/lib/mock-data";
 
 const latestStepByAgent: Partial<Record<AgentId, string>> = {
   hunter: "discovery",
@@ -23,29 +23,51 @@ const latestStepByAgent: Partial<Record<AgentId, string>> = {
 
 export function CommandCenter() {
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null);
+  const { state, loading, error, starting, aborting, start, abort } = useCommandCenterState();
 
+  const replaySteps = state?.replaySteps ?? [];
   const jumpedStepId = selectedAgentId
     ? latestStepByAgent[selectedAgentId] ?? replaySteps.find((s) => s.status === "active")?.id
     : null;
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <TopBar />
+      <TopBar job={state?.job ?? null} starting={starting} aborting={aborting} onStart={start} onAbort={abort} />
       <div className="flex min-h-0 flex-1">
         <IconRail />
         <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[1.3fr_1fr_1fr] lg:grid-rows-2">
-          <AgentNetworkPanel selectedAgentId={selectedAgentId} onSelectAgent={setSelectedAgentId} />
+          <AgentNetworkPanel
+            graphNodes={state?.graphNodes ?? []}
+            graphEdges={state?.graphEdges ?? []}
+            activeEdgeIds={state?.activeEdgeIds ?? []}
+            finding={state?.finding ?? null}
+            loading={loading}
+            error={error}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+          />
 
-          <VerificationRuntimePanel />
+          <VerificationRuntimePanel
+            verificationState={state?.verificationState ?? null}
+            verificationLog={state?.verificationLog ?? []}
+            loading={loading}
+            error={error}
+          />
 
           <div className="grid min-h-0 grid-rows-2 gap-3">
-            <VerificationStatePanel />
-            <ReplayTimelinePanel jumpedStepId={jumpedStepId} />
+            <VerificationStatePanel verificationState={state?.verificationState ?? null} loading={loading} error={error} />
+            <ReplayTimelinePanel replaySteps={replaySteps} jumpedStepId={jumpedStepId} loading={loading} error={error} />
           </div>
 
-          <EvidenceVaultPanel />
+          <EvidenceVaultPanel evidenceDoc={state?.evidenceDoc ?? null} loading={loading} error={error} />
 
-          <AgentRegistryPanel selectedAgentId={selectedAgentId} onSelectAgent={setSelectedAgentId} />
+          <AgentRegistryPanel
+            agents={state?.agents ?? []}
+            loading={loading}
+            error={error}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+          />
         </main>
       </div>
     </div>

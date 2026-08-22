@@ -10,7 +10,7 @@ from typing import Any
 
 from app.knowledge import osv_client, ghsa_client, nvd_client, epss_client, owasp_patterns
 from app.memory import retrieve_similar_verdicts, retrieve_verified_fix
-from app.agents.verification_lab import trace_code_import_path
+from app.agents.reachability import find_reachability_evidence
 
 
 def lookup_vulnerability(advisory_id: str) -> dict[str, Any]:
@@ -82,23 +82,30 @@ def search_memory_bank(repo: str, cwe_class: str) -> dict[str, Any]:
     }
 
 
-def trace_reachability(entrypoint: str, target_function: str, repo_path: str) -> dict[str, Any]:
-    """Trace whether target_function is reachable from entrypoint in repo.
+def trace_reachability(component: str, repo_path: str) -> dict[str, Any]:
+    """Trace whether `component` is actually imported anywhere in the
+    application's own source (not node_modules) - the real, regex-based MVP
+    reachability check described in the backend build prompt. Not a full
+    call-graph engine: it answers "is this package imported at all, and
+    where" rather than tracing a specific call chain from a named
+    entrypoint, but every match is a real grep hit, never asserted.
 
     Args:
-        entrypoint: HTTP endpoint or exported function (e.g., "POST /api/checkout")
-        target_function: Function to check reachability for (e.g., "query()")
-        repo_path: Path to repository
+        component: package/component name to search import sites for (e.g. "jsonwebtoken")
+        repo_path: path to the repository to scan
 
     Returns:
         {
             "reachable": True/False,
-            "path": [...call chain...] or None,
-            "confidence": "high" | "medium" | "low",
+            "path": [{"file", "line", "text"}, ...] real import sites found,
+            "confidence": "high" | "low",
             "source": "static_analysis",
         }
     """
-    path = trace_code_import_path(entrypoint, target_function, repo_path)
+    from pathlib import Path
+
+    matches = find_reachability_evidence(Path(repo_path), component)
+    path = [{"file": m.file, "line": m.line_number, "text": m.line_text} for m in matches]
 
     return {
         "reachable": bool(path),
