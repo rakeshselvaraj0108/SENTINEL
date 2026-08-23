@@ -1,60 +1,55 @@
 "use client";
 
-import { useState } from "react";
 import clsx from "clsx";
 import { Panel } from "../command-center/Panel";
-import { relatedFindings } from "@/lib/remediation-data";
-import type { FindingSeverityTone } from "@/lib/remediation-types";
+import type { FindingOption } from "@/lib/sentinel/api";
 
-const toneStyle: Record<FindingSeverityTone, { border: string; label: string; text: string }> = {
-  critical: { border: "border-l-danger", label: "critical", text: "text-danger" },
-  review: { border: "border-l-warning", label: "needs review", text: "text-warning" },
-  info: { border: "border-l-neutral", label: "info", text: "text-text-muted" },
+const severityStyle: Record<FindingOption["severity"], { border: string; text: string }> = {
+  critical: { border: "border-l-danger", text: "text-danger" },
+  high: { border: "border-l-warning", text: "text-warning" },
+  medium: { border: "border-l-neutral", text: "text-text-muted" },
+  low: { border: "border-l-success", text: "text-success" },
 };
 
-export function FindingsPanel() {
-  const [expandedId, setExpandedId] = useState<string | null>(relatedFindings[0].id);
+interface FindingsPanelProps {
+  options: FindingOption[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  loading?: boolean;
+  error?: string | null;
+}
 
+export function FindingsPanel({ options, selectedId, onSelect, loading, error }: FindingsPanelProps) {
   return (
-    <Panel title="Active Agent Analyses" bodyClassName="flex flex-col gap-2 overflow-auto p-2">
-      {relatedFindings.map((finding) => {
-        const tone = toneStyle[finding.tone];
-        const isExpanded = expandedId === finding.id;
-        return (
-          <div
-            key={finding.id}
-            className={clsx("border-l-2 bg-black/20 pl-3 pr-2 py-2", tone.border)}
-          >
+    <Panel title="Findings" bodyClassName="flex flex-col gap-2 overflow-auto p-2">
+      {loading && options.length === 0 ? (
+        <p className="px-2 py-4 text-center text-[11px] text-text-dim">connecting…</p>
+      ) : error && options.length === 0 ? (
+        <p className="px-2 py-4 text-center text-[11px] text-danger">{error}</p>
+      ) : (
+        options.map((finding) => {
+          const tone = severityStyle[finding.severity];
+          const isSelected = selectedId === finding.id;
+          return (
             <button
+              key={finding.id}
               type="button"
-              onClick={() => setExpandedId(isExpanded ? null : finding.id)}
-              className="flex w-full flex-col items-start gap-1 text-left"
+              onClick={() => onSelect(finding.id)}
+              className={clsx(
+                "flex w-full flex-col items-start gap-1 border-l-2 bg-black/20 px-3 py-2 text-left transition-colors",
+                tone.border,
+                isSelected ? "bg-amber-soft/40" : "hover:bg-white/[0.02]"
+              )}
             >
               <div className="flex w-full items-center justify-between gap-2">
-                <span className="text-[12px] font-medium text-text">{finding.title}</span>
-                <span className={clsx("shrink-0 font-data text-[9px] uppercase tracking-[0.06em]", tone.text)}>
-                  {tone.label}
-                </span>
+                <span className={clsx("text-[12px] font-medium", isSelected ? "text-amber" : "text-text")}>{finding.component}</span>
+                <span className={clsx("shrink-0 font-data text-[9px] uppercase tracking-[0.06em]", tone.text)}>{finding.severity}</span>
               </div>
-              <p className="text-[11px] leading-snug text-text-muted">{finding.context}</p>
+              <p className="font-data text-[10px] leading-snug text-text-muted">{finding.cve}</p>
             </button>
-
-            {isExpanded && finding.callChain && (
-              <div className="mt-2 border-t border-border-soft pt-2 font-data text-[10.5px] leading-relaxed text-text-muted">
-                {finding.callChain.map((call, i) => {
-                  const isLast = i === finding.callChain!.length - 1;
-                  return (
-                    <div key={call} style={{ paddingLeft: `${i * 14}px` }}>
-                      <span className="text-text-dim">{i === 0 ? "" : isLast ? "└─ " : "├─ "}</span>
-                      <span className={isLast ? "text-danger" : "text-text-muted"}>{call}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          );
+        })
+      )}
     </Panel>
   );
 }

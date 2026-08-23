@@ -12,6 +12,7 @@ Run with:
 
 from __future__ import annotations
 
+import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,7 +22,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import decisions
+from app import decisions, memory
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
 from app.governance import gateway, identity, model_armor, registry
@@ -44,14 +45,16 @@ app.add_middleware(
 # --------------------------------------------------------------------------
 _findings_lock = Lock()
 _findings_cache: list[dict] | None = None
+_findings_loaded_at: str | None = None
 
 
 def _load_findings(force: bool = False) -> list[dict]:
-    global _findings_cache
+    global _findings_cache, _findings_loaded_at
     with _findings_lock:
         if _findings_cache is None or force:
             findings = hunt(DEMO_REPO_DIR) if DEMO_REPO_DIR.exists() else hunt()
             _findings_cache = [f.model_dump(mode="json") for f in findings]
+            _findings_loaded_at = datetime.now(timezone.utc).isoformat()
         return _findings_cache
 
 
@@ -191,6 +194,93 @@ def get_evidence(finding_id: str):
     if doc is None:
         raise HTTPException(404, f"No evidence sealed yet for {finding_id}")
     return doc
+
+
+@app.get("/api/evidence/{finding_id}/verify")
+def verify_evidence(finding_id: str):
+    """Real per-document seal check: recompute the signature from the
+    record's current content and compare against what's stored. This is
+    what DwsViewerSlot's "verify seal" button actually calls now, instead
+    of a bare setTimeout pretending to check something."""
+    from app.agents.evidence_agent import verify_signature
+
+    doc = get_store().get_evidence(finding_id)
+    if doc is None:
+        raise HTTPException(404, f"No evidence sealed yet for {finding_id}")
+    return {"finding_id": finding_id, "valid": verify_signature(doc), "signature": doc.get("signature")}
+
+
+@app.get("/api/deployment-gate/pending")
+def list_pending_gate_reviews():
+    """Real review queue: every sealed evidence record that doesn't yet
+    have a human decision recorded. No separate 'review task' storage
+    exists or is needed - this is just the honest intersection of two
+    things that are already real: the evidence store and decisions.json."""
+    pending = []
+    for doc in get_store().list_evidence():
+        finding_id = doc.get("finding_id")
+        if not doc.get("signature") or not finding_id:
+            continue
+        if decisions.get_decision(finding_id) is not None:
+            continue
+        finding = _find_finding(finding_id)
+        timeline = doc.get("timeline") or []
+        pending.append({
+            "finding_id": finding_id,
+            "title": (finding.get("summary") or finding.get("component")) if finding else finding_id,
+            "submitted_at": timeline[-1]["ts"] if timeline else doc.get("checked_at", ""),
+            "sealed": True,
+        })
+    pending.sort(key=lambda p: p["submitted_at"])
+    return {"pending": pending}
+
+
+@app.get("/api/deployment-gate")
+def get_deployment_gate(finding_id: str | None = None):
+    """Real aggregate for the Deployment Gate: the finding, its sealed
+    evidence (if any), the human decision (if any), and a checklist derived
+    from actual pipeline output - no hardcoded 'verified'/'1/1 passed'
+    props. There's no real regression-test runner anywhere in this system,
+    so rather than fabricate a pass/fail count, the checklist reports the
+    real, honest thing that exists: how many test files Patch Forge
+    actually generated."""
+    finding_id = finding_id or _default_finding_id()
+    finding = _find_finding(finding_id) if finding_id else None
+    evidence = get_store().get_evidence(finding_id) if finding_id else None
+    decision = decisions.get_decision(finding_id) if finding_id else None
+
+    verification_results = (evidence or {}).get("verification_results") or []
+    patch_proposal = (evidence or {}).get("patch_proposal")
+    final_status = (evidence or {}).get("final_status")
+
+    checklist = {
+        "security_resolved": final_status == "RESOLVED",
+        "security_status": final_status or "not yet investigated",
+        "generated_test_count": len((patch_proposal or {}).get("generated_test_paths") or []),
+        "reverification_passed": bool(verification_results) and verification_results[-1]["result"] == "RESOLVED",
+        "reverification_result": verification_results[-1]["result"] if verification_results else None,
+    }
+
+    return {
+        "finding": (
+            {
+                "finding_id": finding["finding_id"],
+                "cve": finding.get("advisory_id") or finding["finding_id"],
+                "title": finding.get("summary") or finding["component"],
+                "component": finding["component"],
+                "severity": finding["severity"],
+            }
+            if finding
+            else None
+        ),
+        "repo": (evidence or {}).get("repo"),
+        "commit": (evidence or {}).get("commit"),
+        "branchName": (patch_proposal or {}).get("branch_name"),
+        "signature": (evidence or {}).get("signature"),
+        "sealed": bool((evidence or {}).get("signature")),
+        "checklist": checklist,
+        "decision": decision,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -547,6 +637,114 @@ def get_state(finding_id: str | None = None):
         "replaySteps": replay_steps,
         "evidenceDoc": evidence_doc,
         "verificationState": verification_state,
+    }
+
+
+# --------------------------------------------------------------------------
+# Audit Ledger - a real SHA-256 hash chain built from actual pipeline events
+# (Hunter's real findings, plus every real timeline entry already sealed
+# into an evidence record). Computed fresh from the real store on each
+# request rather than incrementally maintained, so it's always consistent
+# with whatever the store actually holds and never drifts from it - the
+# chain is a derived view, not a second copy of the truth.
+# --------------------------------------------------------------------------
+
+_LEDGER_GENESIS = "sha256:genesis"
+
+
+def _ledger_payload(finding_id: str, agent: str, action: str, detail: str, ts: str) -> str:
+    # Exact same format as the frontend's ledgerEntryPayload() in
+    # lib/ledger-data.ts, so a client-side SHA-256 re-hash (same algorithm,
+    # same input string) reproduces the identical chain - the whole point
+    # of a hash chain being independently verifiable, not merely displayed.
+    return f"{finding_id}|{agent}|{action}|{detail}|{ts}"
+
+
+def _sha256_chain_hash(prev_hash: str, payload: str) -> str:
+    digest = hashlib.sha256((prev_hash + payload).encode("utf-8")).hexdigest()
+    return f"sha256:{digest}"
+
+
+def _build_ledger() -> list[dict]:
+    findings = _load_findings()
+    discovered_at = _findings_loaded_at or datetime.now(timezone.utc).isoformat()
+
+    raw_events: list[tuple[str, str, str, str, str, str]] = []  # (ts, finding_id, title, agent, action, detail)
+
+    for f in findings:
+        title = f"{f['component']} - {f.get('advisory_id') or f['finding_id']}"
+        raw_events.append((
+            discovered_at,
+            f["finding_id"],
+            title,
+            "hunter",
+            "ingestion verified",
+            f"Detected {f.get('advisory_id')} in {f['component']}@{f['version']} (severity: {f['severity']})",
+        ))
+
+    for evidence in get_store().list_evidence():
+        finding_id = evidence.get("finding_id", "unknown")
+        finding = _find_finding(finding_id)
+        title = f"{finding['component']} - {finding.get('advisory_id')}" if finding else finding_id
+        for entry in evidence.get("timeline", []):
+            agent = entry.get("actor", "unknown").lower().replace(" ", "-")
+            raw_events.append((entry.get("ts", discovered_at), finding_id, title, agent, "pipeline event", entry.get("action", "")))
+        decision = decisions.get_decision(finding_id)
+        if decision:
+            raw_events.append((
+                decision["ts"], finding_id, title, "human",
+                f"final {decision['decision']}",
+                f"Deployment Gate decision: {decision['decision']} by {decision['actor']}",
+            ))
+
+    raw_events.sort(key=lambda e: e[0])
+
+    chain: list[dict] = []
+    prev_hash = _LEDGER_GENESIS
+    for seq, (ts, finding_id, title, agent, action, detail) in enumerate(raw_events):
+        payload = _ledger_payload(finding_id, agent, action, detail, ts)
+        entry_hash = _sha256_chain_hash(prev_hash, payload)
+        chain.append({
+            "seq": seq,
+            "findingId": finding_id,
+            "title": title,
+            "agent": agent,
+            "action": action,
+            "detail": detail,
+            "timestamp": ts,
+            "hash": entry_hash,
+            "prevHash": prev_hash,
+        })
+        prev_hash = entry_hash
+
+    return chain
+
+
+@app.get("/api/ledger")
+def get_ledger():
+    return {"entries": _build_ledger()}
+
+
+@app.get("/api/health")
+def get_health():
+    """Real system health: memory-bank collection counts (are they even
+    queryable right now) and evidence-store signature integrity (does every
+    sealed record's signature still match its content) - the concrete data
+    behind the Audit Persistence Monitor panel, replacing what used to be
+    three hardcoded module-level constants."""
+    from app.agents.evidence_agent import verify_signature
+
+    mem_health = memory.memory_bank_health()
+    all_evidence = get_store().list_evidence()
+    verified = [verify_signature(e) for e in all_evidence]
+    integrity_pct = (sum(verified) / len(verified) * 100) if verified else 100.0
+
+    return {
+        "memory_bank": mem_health,
+        "evidence_integrity_pct": round(integrity_pct, 1),
+        "evidence_count": len(all_evidence),
+        "evidence_verified_count": sum(verified),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
     }
 
 

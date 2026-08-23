@@ -50,6 +50,26 @@ export interface FindingOption extends FindingSummary {
   component: string;
 }
 
+/** Full real Finding record - mirrors backend/app/schemas.py::Finding. */
+export interface FullFinding {
+  finding_id: string;
+  severity: "critical" | "high" | "medium" | "low";
+  component: string;
+  version: string;
+  source: string;
+  advisory_id: string | null;
+  advisory_url: string | null;
+  cwe: string[];
+  cvss_score: number | null;
+  summary: string | null;
+  grounding_source: string | null;
+  grounding_status: string | null;
+}
+
+export function getFindings(): Promise<{ findings: FullFinding[] }> {
+  return apiFetch("/api/findings");
+}
+
 export interface JobRecord {
   job_id: string;
   job_type: string;
@@ -119,6 +139,18 @@ export function getSystemInfo(): Promise<SystemInfo> {
   return apiFetch<SystemInfo>("/api/system-info");
 }
 
+export interface HealthState {
+  memory_bank: { healthy: boolean; collections: Record<string, number>; error?: string };
+  evidence_integrity_pct: number;
+  evidence_count: number;
+  evidence_verified_count: number;
+  checked_at: string;
+}
+
+export function getHealth(): Promise<HealthState> {
+  return apiFetch("/api/health");
+}
+
 export interface GatewayLogEntry {
   ts: string;
   agent: string;
@@ -142,10 +174,6 @@ export interface RegistryEntry {
 
 export function getRegistry(): Promise<{ agents: RegistryEntry[] }> {
   return apiFetch("/api/registry");
-}
-
-export function getEvidence(findingId: string): Promise<Record<string, unknown>> {
-  return apiFetch(`/api/evidence/${encodeURIComponent(findingId)}`);
 }
 
 export interface ModelArmorLogEntry {
@@ -172,6 +200,164 @@ export function evaluatePolicyLive(agent: string, action: string): Promise<Polic
     method: "POST",
     body: JSON.stringify({ agent, action }),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Structured evidence sub-objects - mirror backend/app/schemas.py exactly
+// (snake_case field names, since these are raw Pydantic .model_dump()s).
+// ---------------------------------------------------------------------------
+
+export interface RelevanceClaim {
+  statement: string;
+  source: string;
+}
+
+export interface RelevanceVerdict {
+  finding_id: string;
+  verdict: "confirmed" | "likely" | "uncertain" | "not_relevant";
+  reasoning: string;
+  claims: RelevanceClaim[];
+}
+
+export interface VerificationResultRecord {
+  finding_id: string;
+  scenario: string;
+  expected: string;
+  observed: string;
+  result: "CONFIRMED_EXPLOITABLE" | "RESOLVED" | "INCONCLUSIVE";
+  sandbox_id: string;
+  duration_ms: number;
+}
+
+export interface PatchProposalRecord {
+  finding_id: string;
+  branch_name: string;
+  files_changed: string[];
+  diff: string;
+  generated_test_paths: string[];
+  explanation: string;
+}
+
+export interface TimelineEntryRecord {
+  actor: string;
+  action: string;
+  ts: string;
+}
+
+export interface FullEvidenceObject {
+  finding_id: string;
+  repo: string;
+  commit: string | null;
+  timeline: TimelineEntryRecord[];
+  final_status: string;
+  signature: string | null;
+  dws_seal: string | null;
+  verdict: RelevanceVerdict | null;
+  verification_results: VerificationResultRecord[];
+  patch_proposal: PatchProposalRecord | null;
+}
+
+/** Shape of JobRecord.result for a completed "investigate_finding" job -
+ * mirrors worker.py's run_investigation() return value exactly. */
+export interface InvestigationResult {
+  verdict: RelevanceVerdict;
+  patch: PatchProposalRecord;
+  reverify: {
+    results: VerificationResultRecord[];
+    final_patch_proposal: PatchProposalRecord;
+  };
+  evidence: FullEvidenceObject;
+}
+
+export function asInvestigationResult(result: Record<string, unknown> | null): InvestigationResult | null {
+  if (!result || !("verdict" in result) || !("patch" in result) || !("reverify" in result)) return null;
+  return result as unknown as InvestigationResult;
+}
+
+export function getFullEvidence(findingId: string): Promise<FullEvidenceObject> {
+  return apiFetch(`/api/evidence/${encodeURIComponent(findingId)}`);
+}
+
+export function listEvidence(): Promise<{ evidence: FullEvidenceObject[] }> {
+  return apiFetch("/api/evidence");
+}
+
+export function verifyEvidence(findingId: string): Promise<{ finding_id: string; valid: boolean; signature: string | null }> {
+  return apiFetch(`/api/evidence/${encodeURIComponent(findingId)}/verify`);
+}
+
+// ---------------------------------------------------------------------------
+// Deployment Gate
+// ---------------------------------------------------------------------------
+
+export interface DeploymentGateChecklist {
+  security_resolved: boolean;
+  security_status: string;
+  generated_test_count: number;
+  reverification_passed: boolean;
+  reverification_result: string | null;
+}
+
+export interface DecisionRecord {
+  finding_id: string;
+  decision: "approved" | "rejected";
+  actor: string;
+  ts: string;
+}
+
+export interface DeploymentGateState {
+  finding: { finding_id: string; cve: string; title: string; component: string; severity: string } | null;
+  repo: string | null;
+  commit: string | null;
+  branchName: string | null;
+  signature: string | null;
+  sealed: boolean;
+  checklist: DeploymentGateChecklist;
+  decision: DecisionRecord | null;
+}
+
+export function getDeploymentGate(findingId?: string | null): Promise<DeploymentGateState> {
+  const qs = findingId ? `?finding_id=${encodeURIComponent(findingId)}` : "";
+  return apiFetch(`/api/deployment-gate${qs}`);
+}
+
+export interface PendingGateReview {
+  finding_id: string;
+  title: string;
+  submitted_at: string;
+  sealed: boolean;
+}
+
+export function getPendingGateReviews(): Promise<{ pending: PendingGateReview[] }> {
+  return apiFetch("/api/deployment-gate/pending");
+}
+
+// ---------------------------------------------------------------------------
+// Audit Ledger
+// ---------------------------------------------------------------------------
+
+export interface LedgerEntry {
+  seq: number;
+  findingId: string;
+  title: string;
+  agent: string;
+  action: string;
+  detail: string;
+  timestamp: string;
+  hash: string;
+  prevHash: string;
+}
+
+export function getLedger(): Promise<{ entries: LedgerEntry[] }> {
+  return apiFetch("/api/ledger");
+}
+
+/** Exact same payload format as the backend's _ledger_payload() in
+ * server.py, so a client-side SHA-256 re-hash reproduces the identical
+ * chain the server computed - that's what makes "verify chain" a real
+ * independent recomputation instead of trusting the server's own claim. */
+export function ledgerEntryPayload(entry: Pick<LedgerEntry, "findingId" | "agent" | "action" | "detail" | "timestamp">): string {
+  return `${entry.findingId}|${entry.agent}|${entry.action}|${entry.detail}|${entry.timestamp}`;
 }
 
 export function postDecision(

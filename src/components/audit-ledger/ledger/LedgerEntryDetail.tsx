@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { IconArrowUpRight, IconX } from "@tabler/icons-react";
 import { formatTimestampUtc } from "@/lib/format";
-import { sealedFindingIds } from "@/lib/ledger-data";
-import type { LedgerEntry } from "@/lib/ledger-types";
+import type { LedgerEntry } from "@/lib/sentinel/api";
 
-export function LedgerEntryDetail({ entry, onClose }: { entry: LedgerEntry; onClose: () => void }) {
-  const isSealed = sealedFindingIds.has(entry.findingId);
+export function LedgerEntryDetail({
+  entry,
+  sealed,
+  onClose,
+}: {
+  entry: LedgerEntry;
+  sealed: boolean;
+  onClose: () => void;
+}) {
+  const isSealed = sealed;
 
   return (
     <div className="flex flex-col gap-1.5 border-t border-amber/30 bg-amber-soft/40 px-3 py-2.5">

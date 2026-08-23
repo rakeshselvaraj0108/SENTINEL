@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { TopBar } from "../command-center/TopBar";
 import { IconRail } from "../command-center/IconRail";
 import { DeploymentGateCard } from "./DeploymentGateCard";
@@ -9,7 +10,9 @@ export function DeploymentGatePage() {
       <div className="flex min-h-0 flex-1">
         <IconRail />
         <main className="gate-spotlight relative flex flex-1 items-center justify-center overflow-auto p-6">
-          <DeploymentGateCard />
+          <Suspense fallback={null}>
+            <DeploymentGateCard />
+          </Suspense>
         </main>
       </div>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { TopBar } from "../command-center/TopBar";
 import { IconRail } from "../command-center/IconRail";
 import { EvidenceHeader } from "./EvidenceHeader";
@@ -13,9 +14,17 @@ import { AuditTrailPanel } from "./column3/AuditTrailPanel";
 import { ExecutionTimelineLink } from "./column3/ExecutionTimelineLink";
 import { CompleteSecurePanel } from "./column3/CompleteSecurePanel";
 import { DwsViewerSlot } from "../shared/DwsViewerSlot";
-import { dwsSeal } from "@/lib/evidence-data";
+import { useEvidenceList, useFullEvidence } from "@/lib/sentinel/hooks";
 
-export function EvidenceReport() {
+function EvidenceReportInner() {
+  const searchParams = useSearchParams();
+  const queryFindingId = searchParams.get("finding_id");
+  // Falls back to whichever evidence was sealed most recently, so this page
+  // has something to show without requiring the URL param on first visit.
+  const { evidence: evidenceList } = useEvidenceList();
+  const findingId = queryFindingId ?? evidenceList[evidenceList.length - 1]?.finding_id ?? null;
+
+  const { evidence, loading, error } = useFullEvidence(findingId);
   const [selectedTarget, setSelectedTarget] = useState<string | null>(null);
 
   return (
@@ -24,28 +33,50 @@ export function EvidenceReport() {
       <div className="flex min-h-0 flex-1">
         <IconRail />
         <div className="flex min-h-0 flex-1 flex-col">
-          <EvidenceHeader />
-          <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[0.85fr_1fr_1fr]">
-            <div className="flex flex-col gap-3">
-              <VulnerabilitySummaryPanel highlighted={selectedTarget === "summary"} />
-              <ReachabilityAnalysisPanel highlighted={selectedTarget === "reachability"} />
-              <SandboxVerificationPanel highlighted={selectedTarget === "reverify"} />
-              <RemediationEvidencePackPanel highlighted={selectedTarget === "evidence-pack"} />
+          <EvidenceHeader evidence={evidence} findingId={findingId} />
+          {loading && !evidence ? (
+            <div className="flex flex-1 items-center justify-center text-[12px] text-text-dim">connecting to agent engine…</div>
+          ) : error && !evidence ? (
+            <div className="flex flex-1 items-center justify-center text-[12px] text-danger">{error}</div>
+          ) : !evidence ? (
+            <div className="flex flex-1 items-center justify-center text-[12px] text-text-dim">
+              No evidence sealed yet. Start and complete an investigation from the Command Center first.
             </div>
+          ) : (
+            <main className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-auto p-3 lg:grid-cols-[0.85fr_1fr_1fr]">
+              <div className="flex flex-col gap-3">
+                <VulnerabilitySummaryPanel evidence={evidence} highlighted={selectedTarget === "summary"} />
+                <ReachabilityAnalysisPanel evidence={evidence} highlighted={selectedTarget === "reachability"} />
+                <SandboxVerificationPanel evidence={evidence} highlighted={selectedTarget === "reverify"} />
+                <RemediationEvidencePackPanel evidence={evidence} highlighted={selectedTarget === "evidence-pack"} />
+              </div>
 
-            <div className="flex flex-col gap-3">
-              <ReVerificationResultsPanel highlighted={selectedTarget === "reverify"} />
-            </div>
+              <div className="flex flex-col gap-3">
+                <ReVerificationResultsPanel evidence={evidence} highlighted={selectedTarget === "reverify"} />
+              </div>
 
-            <div className="flex flex-col gap-3">
-              <AuditTrailPanel selectedTarget={selectedTarget} onSelect={setSelectedTarget} />
-              <ExecutionTimelineLink />
-              <CompleteSecurePanel highlighted={selectedTarget === "signoff"} />
-              <DwsViewerSlot documentId={dwsSeal.documentId} verificationId={dwsSeal.verificationId} />
-            </div>
-          </main>
+              <div className="flex flex-col gap-3">
+                <AuditTrailPanel evidence={evidence} selectedTarget={selectedTarget} onSelect={setSelectedTarget} />
+                <ExecutionTimelineLink />
+                <CompleteSecurePanel evidence={evidence} highlighted={selectedTarget === "signoff"} />
+                <DwsViewerSlot
+                  documentId={evidence.signature ?? "unsigned"}
+                  verificationId={evidence.finding_id}
+                  findingId={evidence.finding_id}
+                />
+              </div>
+            </main>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+export function EvidenceReport() {
+  return (
+    <Suspense fallback={null}>
+      <EvidenceReportInner />
+    </Suspense>
   );
 }

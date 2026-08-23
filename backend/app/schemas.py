@@ -93,3 +93,12 @@ class EvidenceObject(BaseModel):
     final_status: str
     signature: str | None = None
     dws_seal: str | None = None
+    # Structured sub-objects, retained verbatim from the pipeline stage that
+    # produced them (not re-derived from the narrative timeline strings
+    # above). Evidence Report, Remediation Forge's Verify tab, and the Audit
+    # Ledger all need the actual verdict/verification/patch data, not just a
+    # prose summary of it - these are what make this a real evidence
+    # envelope instead of a narrative log with a signature bolted on.
+    verdict: RelevanceVerdict | None = None
+    verification_results: list[VerificationResult] = Field(default_factory=list)
+    patch_proposal: PatchProposal | None = None

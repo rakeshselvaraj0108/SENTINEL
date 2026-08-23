@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import clsx from "clsx";
 import { IconCircleCheck } from "@tabler/icons-react";
 import { truncateHash } from "@/lib/format";
-import type { LedgerEntry } from "@/lib/ledger-types";
+import type { LedgerEntry } from "@/lib/sentinel/api";
 
 export function EntryRow({
   style,

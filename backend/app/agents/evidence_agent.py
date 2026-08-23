@@ -43,6 +43,25 @@ def _sign(payload: dict) -> str:
     return f"sha256:{digest}"
 
 
+def verify_signature(evidence: dict) -> bool:
+    """Real tamper check: recompute the signature from the record's current
+    content and compare against the stored one. Used by /api/health so the
+    Audit Persistence Monitor's integrity number means something (if a file
+    in the evidence store were hand-edited without going through this
+    module, this is what would catch it)."""
+    payload = {
+        "finding_id": evidence.get("finding_id"),
+        "repo": evidence.get("repo"),
+        "commit": evidence.get("commit"),
+        "timeline": evidence.get("timeline", []),
+        "final_status": evidence.get("final_status"),
+        "verdict": evidence.get("verdict"),
+        "verification_results": evidence.get("verification_results", []),
+        "patch_proposal": evidence.get("patch_proposal"),
+    }
+    return _sign(payload) == evidence.get("signature")
+
+
 def _resolve_commit(repo_dir: Path | None, branch_name: str | None) -> str | None:
     if repo_dir is None or branch_name is None:
         return None
@@ -120,6 +139,9 @@ def assemble_evidence(
         "commit": commit,
         "timeline": [t.model_dump() for t in timeline],
         "final_status": final_status,
+        "verdict": verdict.model_dump() if verdict else None,
+        "verification_results": [vr.model_dump() for vr in verification_results],
+        "patch_proposal": patch_proposal.model_dump() if patch_proposal else None,
     }
     signature = _sign(payload)
 
@@ -131,6 +153,9 @@ def assemble_evidence(
         final_status=final_status,
         signature=signature,
         dws_seal=None,
+        verdict=verdict,
+        verification_results=verification_results,
+        patch_proposal=patch_proposal,
     )
 
     out_path = EVIDENCE_DIR / f"{finding.finding_id}.json"

@@ -1,13 +1,13 @@
-import clsx from "clsx";
-import { IconSquareCheck, IconSend } from "@tabler/icons-react";
+import { IconFileCode, IconSend } from "@tabler/icons-react";
 import { Panel } from "../../command-center/Panel";
-import { generatedTests } from "@/lib/remediation-data";
+import type { PatchProposalRecord } from "@/lib/sentinel/api";
 
 interface GeneratedTestsPanelProps {
+  patch: PatchProposalRecord;
   onSendToVerification: () => void;
 }
 
-export function GeneratedTestsPanel({ onSendToVerification }: GeneratedTestsPanelProps) {
+export function GeneratedTestsPanel({ patch, onSendToVerification }: GeneratedTestsPanelProps) {
   return (
     <Panel
       title="Generated Tests"
@@ -23,32 +23,19 @@ export function GeneratedTestsPanel({ onSendToVerification }: GeneratedTestsPane
       }
       bodyClassName="p-1"
     >
-      {generatedTests.map((test) => (
-        <div
-          key={test.id}
-          className={clsx(
-            "flex items-center justify-between gap-2 px-3 py-1.5",
-            test.isSummary && "border-t border-border-soft bg-white/[0.02]"
-          )}
-        >
-          <span className="flex items-center gap-2 text-[11.5px] text-text">
-            <IconSquareCheck
-              size={14}
-              strokeWidth={1.5}
-              className={test.isSummary ? "text-amber" : "text-success"}
-            />
-            {test.label}
-          </span>
-          <span
-            className={clsx(
-              "font-data text-[11px] tabular-nums",
-              test.isSummary ? "text-amber" : "text-text-muted"
-            )}
-          >
-            {test.count}/{test.total}
-          </span>
-        </div>
-      ))}
+      {patch.generated_test_paths.length === 0 ? (
+        <p className="px-3 py-3 text-[11px] text-text-dim">No test file paths recorded for this patch.</p>
+      ) : (
+        patch.generated_test_paths.map((path) => (
+          <div key={path} className="flex items-center gap-2 px-3 py-1.5">
+            <IconFileCode size={14} strokeWidth={1.5} className="shrink-0 text-success" />
+            <span className="truncate font-data text-[11px] text-text" title={path}>
+              {path}
+            </span>
+            <span className="ml-auto shrink-0 font-data text-[9.5px] text-text-dim">on {patch.branch_name}</span>
+          </div>
+        ))
+      )}
     </Panel>
   );
 }

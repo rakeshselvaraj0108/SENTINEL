@@ -4,16 +4,17 @@ import { useState } from "react";
 import { IconFileTypePdf, IconCopy, IconCheck, IconArrowLeft } from "@tabler/icons-react";
 import { Panel } from "../command-center/Panel";
 import { DwsViewerSlot } from "../shared/DwsViewerSlot";
-import { vaultDocuments } from "@/lib/ledger-data";
+import { useEvidenceList } from "@/lib/sentinel/hooks";
 import { truncateHash } from "@/lib/format";
-import type { VaultDocument } from "@/lib/ledger-types";
+import type { FullEvidenceObject } from "@/lib/sentinel/api";
 
-function VaultRow({ doc, onOpen }: { doc: VaultDocument; onOpen: (doc: VaultDocument) => void }) {
+function VaultRow({ doc, onOpen }: { doc: FullEvidenceObject; onOpen: (doc: FullEvidenceObject) => void }) {
   const [copied, setCopied] = useState(false);
+  const hash = doc.signature ?? "unsigned";
 
   const handleCopy = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    await navigator.clipboard.writeText(doc.hash);
+    await navigator.clipboard.writeText(hash);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -26,19 +27,23 @@ function VaultRow({ doc, onOpen }: { doc: VaultDocument; onOpen: (doc: VaultDocu
     >
       <IconFileTypePdf size={15} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-dim" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[11px] text-text">{doc.filename}</p>
+        <p className="truncate text-[11px] text-text">EVIDENCE-{doc.finding_id}.json</p>
         <div className="mt-1 flex items-center gap-2">
-          <span className="border border-success/40 bg-success/10 px-1 py-0.5 font-data text-[8.5px] uppercase tracking-[0.05em] text-success">
-            SHA-256 sealed
+          <span
+            className={`border px-1 py-0.5 font-data text-[8.5px] uppercase tracking-[0.05em] ${
+              doc.signature ? "border-success/40 bg-success/10 text-success" : "border-warning/40 bg-warning/10 text-warning"
+            }`}
+          >
+            {doc.signature ? "SHA-256 sealed" : "unsigned"}
           </span>
           <span
             role="button"
             tabIndex={0}
             onClick={handleCopy}
-            title={doc.hash}
+            title={hash}
             className="flex items-center gap-1 font-data text-[9.5px] text-text-dim transition-colors hover:text-text-muted"
           >
-            {truncateHash(doc.hash)}
+            {truncateHash(hash)}
             {copied ? <IconCheck size={10} strokeWidth={1.5} className="text-success" /> : <IconCopy size={10} strokeWidth={1.5} />}
           </span>
         </div>
@@ -48,7 +53,8 @@ function VaultRow({ doc, onOpen }: { doc: VaultDocument; onOpen: (doc: VaultDocu
 }
 
 export function DocumentEvidenceVaultPanel() {
-  const [selected, setSelected] = useState<VaultDocument | null>(null);
+  const { evidence, loading, error } = useEvidenceList();
+  const [selected, setSelected] = useState<FullEvidenceObject | null>(null);
 
   if (selected) {
     return (
@@ -62,25 +68,28 @@ export function DocumentEvidenceVaultPanel() {
           back to vault
         </button>
         <DwsViewerSlot
-          key={selected.id}
+          key={selected.finding_id}
           title="Document Evidence Vault"
-          filename={selected.filename}
-          documentId={selected.hash}
-          verificationId={selected.verificationId}
+          filename={`EVIDENCE-${selected.finding_id}.json`}
+          documentId={selected.signature ?? "unsigned"}
+          verificationId={selected.finding_id}
+          findingId={selected.finding_id}
         />
       </div>
     );
   }
 
   return (
-    <Panel
-      title="Document Evidence Vault"
-      headerRight={<span className="font-data text-[10px] text-text-dim">{vaultDocuments.length}</span>}
-      bodyClassName="overflow-auto"
-    >
-      {vaultDocuments.map((doc) => (
-        <VaultRow key={doc.id} doc={doc} onOpen={setSelected} />
-      ))}
+    <Panel title="Document Evidence Vault" headerRight={<span className="font-data text-[10px] text-text-dim">{evidence.length}</span>} bodyClassName="overflow-auto">
+      {loading && evidence.length === 0 ? (
+        <p className="px-3 py-4 text-center text-[11px] text-text-dim">connecting…</p>
+      ) : error && evidence.length === 0 ? (
+        <p className="px-3 py-4 text-center text-[11px] text-danger">{error}</p>
+      ) : evidence.length === 0 ? (
+        <p className="px-3 py-4 text-center text-[11px] text-text-dim">no evidence sealed yet</p>
+      ) : (
+        evidence.map((doc) => <VaultRow key={doc.finding_id} doc={doc} onOpen={setSelected} />)
+      )}
     </Panel>
   );
 }

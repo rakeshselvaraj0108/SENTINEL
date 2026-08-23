@@ -1,9 +1,7 @@
 import { IconSearch } from "@tabler/icons-react";
-import { ledgerAgents } from "@/lib/ledger-data";
-import type { LedgerAgent } from "@/lib/ledger-types";
 
 export interface LedgerFilters {
-  agent: LedgerAgent | "all";
+  agent: string | "all";
   query: string;
   dateFrom: string;
   dateTo: string;
@@ -12,9 +10,10 @@ export interface LedgerFilters {
 interface LedgerFilterBarProps {
   filters: LedgerFilters;
   onChange: (filters: LedgerFilters) => void;
+  agents: string[];
 }
 
-export function LedgerFilterBar({ filters, onChange }: LedgerFilterBarProps) {
+export function LedgerFilterBar({ filters, onChange, agents }: LedgerFilterBarProps) {
   const set = <K extends keyof LedgerFilters>(key: K, value: LedgerFilters[K]) =>
     onChange({ ...filters, [key]: value });
 
@@ -33,11 +32,11 @@ export function LedgerFilterBar({ filters, onChange }: LedgerFilterBarProps) {
 
       <select
         value={filters.agent}
-        onChange={(e) => set("agent", e.target.value as LedgerAgent | "all")}
+        onChange={(e) => set("agent", e.target.value)}
         className="border border-border-soft bg-black/20 px-2 py-1 font-data text-[10px] text-text-muted focus:outline-none"
       >
         <option value="all">all agents</option>
-        {ledgerAgents.map((a) => (
+        {agents.map((a) => (
           <option key={a} value={a}>
             {a}
           </option>

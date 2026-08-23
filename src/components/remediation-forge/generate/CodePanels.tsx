@@ -1,33 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { motion, AnimatePresence } from "framer-motion";
 import { IconMinimize } from "@tabler/icons-react";
 import { Panel } from "../../command-center/Panel";
 import { DiffCodeBlock } from "./DiffCodeBlock";
-import { languagePatches } from "@/lib/remediation-data";
-import type { LangKey } from "@/lib/remediation-types";
+import { parseUnifiedDiff } from "@/lib/format";
+import type { PatchProposalRecord } from "@/lib/sentinel/api";
 
-export function CodePanels() {
-  const [expanded, setExpanded] = useState<LangKey | null>(null);
+/** The one real diff string (PatchProposal.diff) covers a single file - the
+ * one named in its own "+++ b/<file>" header. Other files in files_changed
+ * (e.g. a package.json version bump) have no captured line-level diff, so
+ * they're shown as real prose (the explanation) rather than a fabricated
+ * diff - an honestly narrower panel beats a padded one. */
+function diffTargetFile(diff: string): string | null {
+  const match = diff.match(/^\+\+\+ b\/(.+)$/m);
+  return match ? match[1] : null;
+}
+
+export function CodePanels({ patch }: { patch: PatchProposalRecord }) {
+  const diffLines = useMemo(() => parseUnifiedDiff(patch.diff), [patch.diff]);
+  const diffFile = useMemo(() => diffTargetFile(patch.diff), [patch.diff]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const tabs = patch.files_changed.map((file) => ({
+    key: file,
+    label: file,
+    hasDiff: file === diffFile,
+  }));
 
   if (expanded) {
-    const active = languagePatches.find((p) => p.key === expanded)!;
+    const active = tabs.find((t) => t.key === expanded) ?? tabs[0];
     return (
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-1 border border-border-soft text-[11px] uppercase tracking-[0.06em]">
-          {languagePatches.map((p) => (
+          {tabs.map((t) => (
             <button
-              key={p.key}
+              key={t.key}
               type="button"
-              onClick={() => setExpanded(p.key)}
-              className={clsx(
-                "px-3 py-1.5 transition-colors",
-                p.key === expanded ? "bg-amber-soft text-amber" : "text-text-muted hover:text-text"
-              )}
+              onClick={() => setExpanded(t.key)}
+              className={clsx("px-3 py-1.5 transition-colors", t.key === expanded ? "bg-amber-soft text-amber" : "text-text-muted hover:text-text")}
             >
-              {p.label}
+              {t.label}
             </button>
           ))}
           <button
@@ -40,17 +55,13 @@ export function CodePanels() {
             collapse
           </button>
         </div>
-        <motion.div
-          key={active.key}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.15 }}
-        >
-          <Panel
-            title={active.label}
-            headerRight={<span className="font-data text-[10px] text-text-dim">{active.file}</span>}
-          >
-            <DiffCodeBlock lines={active.lines} isDiff={active.isDiff} />
+        <motion.div key={active.key} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
+          <Panel title={active.label}>
+            {active.hasDiff ? (
+              <DiffCodeBlock lines={diffLines} />
+            ) : (
+              <p className="p-3 text-[11px] leading-snug text-text-muted">{patch.explanation}</p>
+            )}
           </Panel>
         </motion.div>
       </div>
@@ -58,28 +69,28 @@ export function CodePanels() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <AnimatePresence>
-        {languagePatches.map((p) => (
-          <motion.div key={p.key} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
+        {tabs.map((t) => (
+          <motion.div key={t.key} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.15 }}>
             <div
               role="button"
               tabIndex={0}
-              onClick={() => setExpanded(p.key)}
+              onClick={() => setExpanded(t.key)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  setExpanded(p.key);
+                  setExpanded(t.key);
                 }
               }}
               className="block w-full text-left"
             >
-              <Panel
-                title={p.label}
-                headerRight={<span className="font-data text-[9.5px] text-text-dim">{p.file}</span>}
-                className="h-full cursor-pointer transition-colors hover:border-text-dim"
-              >
-                <DiffCodeBlock lines={p.lines} isDiff={p.isDiff} />
+              <Panel title={t.label} className="h-full cursor-pointer transition-colors hover:border-text-dim">
+                {t.hasDiff ? (
+                  <DiffCodeBlock lines={diffLines.slice(0, 8)} />
+                ) : (
+                  <p className="p-3 line-clamp-4 text-[11px] leading-snug text-text-muted">{patch.explanation}</p>
+                )}
               </Panel>
             </div>
           </motion.div>

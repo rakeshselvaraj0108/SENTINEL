@@ -1,16 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { IconCircleCheck, IconCheck, IconX, IconLock } from "@tabler/icons-react";
+import { IconCircleCheck, IconCircleDashed, IconCheck, IconX, IconLock } from "@tabler/icons-react";
 import { GateChecklistRow } from "./GateChecklistRow";
 import { HumanDecisionRow } from "./HumanDecisionRow";
 import { ProvenancePipeline } from "./ProvenancePipeline";
 import { CryptographicSealPanel } from "./CryptographicSealPanel";
-import { gateFinding } from "@/lib/gate-data";
-import { appendLedgerEntry } from "@/lib/ledger-runtime";
-import type { LedgerEntry } from "@/lib/ledger-types";
+import { useDeploymentGate } from "@/lib/sentinel/hooks";
+import { formatTimestampUtc } from "@/lib/format";
 import type { GateDecision } from "@/lib/gate-types";
 
 const rowVariants = {
@@ -19,52 +19,48 @@ const rowVariants = {
 };
 
 export function DeploymentGateCard() {
-  const [decision, setDecision] = useState<GateDecision>("pending");
-  const [ledgerEntry, setLedgerEntry] = useState<LedgerEntry | null>(null);
-  const [sealConfirmed, setSealConfirmed] = useState(false);
+  const searchParams = useSearchParams();
+  const findingId = searchParams.get("finding_id");
+  const { gate, loading, error, deciding, approve, reject } = useDeploymentGate(findingId);
 
-  const handleApprove = () => {
-    const entry = appendLedgerEntry({
-      findingId: gateFinding.findingId,
-      title: gateFinding.title,
-      agent: "human",
-      action: "final approval",
-      detail: `PR #${gateFinding.prNumber} approved at the Deployment Gate — merged and evidence pack sealed`,
-    });
-    setSealConfirmed(false);
-    setLedgerEntry(entry);
-    setDecision("approved");
-  };
-
-  const handleReject = () => {
-    const entry = appendLedgerEntry({
-      findingId: gateFinding.findingId,
-      title: gateFinding.title,
-      agent: "human",
-      action: "final rejection",
-      detail: `PR #${gateFinding.prNumber} rejected at the Deployment Gate — sent back to Patch Forge for revision`,
-    });
-    setSealConfirmed(false);
-    setLedgerEntry(entry);
-    setDecision("rejected");
-  };
-
-  const reopen = () => {
-    setDecision("pending");
-    setLedgerEntry(null);
-    setSealConfirmed(false);
-  };
+  const decision: GateDecision = gate?.decision?.decision ?? "pending";
 
   useEffect(() => {
     if (decision !== "pending") return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key === "a" || e.key === "A") handleApprove();
-      if (e.key === "r" || e.key === "R") handleReject();
+      if (e.key === "a" || e.key === "A") approve();
+      if (e.key === "r" || e.key === "R") reject();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [decision]);
+  }, [decision, approve, reject]);
+
+  if (loading && !gate) {
+    return (
+      <div className="w-full max-w-[480px] border border-border bg-panel/80 p-6 text-center text-[12px] text-text-dim">
+        connecting to agent engine…
+      </div>
+    );
+  }
+
+  if (error && !gate) {
+    return (
+      <div className="w-full max-w-[480px] border border-danger/40 bg-panel/80 p-6 text-center text-[12px] text-danger">
+        {error}
+      </div>
+    );
+  }
+
+  if (!gate?.finding) {
+    return (
+      <div className="w-full max-w-[480px] border border-border bg-panel/80 p-6 text-center text-[12px] text-text-dim">
+        No finding available. Start an investigation from the Command Center first.
+      </div>
+    );
+  }
+
+  const { finding, checklist, branchName, repo, signature } = gate;
 
   return (
     <motion.div
@@ -78,10 +74,10 @@ export function DeploymentGateCard() {
       <ProvenancePipeline decision={decision} />
 
       <div className="mb-1 font-data text-[11px] text-text-muted">
-        {gateFinding.repo} · PR #{gateFinding.prNumber}
+        {repo ?? "no repo yet"} {branchName && `· ${branchName}`}
       </div>
       <h1 className="text-[13px] font-medium text-text">
-        {gateFinding.findingId} — {gateFinding.title}
+        {finding.finding_id} — {finding.title}
       </h1>
 
       <motion.div
@@ -92,26 +88,26 @@ export function DeploymentGateCard() {
       >
         <motion.div variants={rowVariants} transition={{ duration: 0.25 }}>
           <GateChecklistRow
-            icon={<IconCircleCheck size={17} strokeWidth={1.5} />}
+            icon={checklist.security_resolved ? <IconCircleCheck size={17} strokeWidth={1.5} /> : <IconCircleDashed size={17} strokeWidth={1.5} />}
             label="Security condition resolved"
-            status="verified"
-            tone="success"
+            status={checklist.security_status}
+            tone={checklist.security_resolved ? "success" : "warning"}
           />
         </motion.div>
         <motion.div variants={rowVariants} transition={{ duration: 0.25 }}>
           <GateChecklistRow
-            icon={<IconCircleCheck size={17} strokeWidth={1.5} />}
-            label="Regression suite"
-            status={`${gateFinding.regressionPassed}/${gateFinding.regressionTotal} passed`}
-            tone="success"
+            icon={checklist.generated_test_count > 0 ? <IconCircleCheck size={17} strokeWidth={1.5} /> : <IconCircleDashed size={17} strokeWidth={1.5} />}
+            label="Generated regression tests"
+            status={`${checklist.generated_test_count} file${checklist.generated_test_count === 1 ? "" : "s"} authored`}
+            tone={checklist.generated_test_count > 0 ? "success" : "warning"}
           />
         </motion.div>
         <motion.div variants={rowVariants} transition={{ duration: 0.25 }}>
           <GateChecklistRow
-            icon={<IconCircleCheck size={17} strokeWidth={1.5} />}
+            icon={checklist.reverification_passed ? <IconCircleCheck size={17} strokeWidth={1.5} /> : <IconCircleDashed size={17} strokeWidth={1.5} />}
             label="Re-verification"
-            status="passed"
-            tone="success"
+            status={checklist.reverification_result ?? "not yet run"}
+            tone={checklist.reverification_passed ? "success" : "warning"}
           />
         </motion.div>
         <motion.div variants={rowVariants} transition={{ duration: 0.25 }}>
@@ -133,16 +129,19 @@ export function DeploymentGateCard() {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleApprove}
-                  className="flex flex-1 items-center justify-center gap-1.5 border border-amber/50 bg-amber-soft px-3 py-2 font-data text-[11px] font-medium uppercase tracking-[0.05em] text-amber transition-colors hover:bg-amber/20 active:scale-[0.98]"
+                  onClick={approve}
+                  disabled={deciding || !checklist.security_resolved}
+                  title={!checklist.security_resolved ? "Security condition must be resolved before approval" : undefined}
+                  className="flex flex-1 items-center justify-center gap-1.5 border border-amber/50 bg-amber-soft px-3 py-2 font-data text-[11px] font-medium uppercase tracking-[0.05em] text-amber transition-colors hover:bg-amber/20 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <IconCheck size={13} strokeWidth={1.5} />
-                  Approve deployment
+                  {deciding ? "recording…" : "Approve deployment"}
                 </button>
                 <button
                   type="button"
-                  onClick={handleReject}
-                  className="flex items-center justify-center gap-1.5 border border-border-soft px-3 py-2 font-data text-[11px] uppercase tracking-[0.05em] text-text-muted transition-colors hover:border-danger/40 hover:text-danger active:scale-[0.98]"
+                  onClick={reject}
+                  disabled={deciding}
+                  className="flex items-center justify-center gap-1.5 border border-border-soft px-3 py-2 font-data text-[11px] uppercase tracking-[0.05em] text-text-muted transition-colors hover:border-danger/40 hover:text-danger active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <IconX size={13} strokeWidth={1.5} />
                   Reject
@@ -160,40 +159,29 @@ export function DeploymentGateCard() {
               transition={{ duration: 0.2 }}
               className="flex flex-col gap-2"
             >
-              {ledgerEntry && <CryptographicSealPanel entry={ledgerEntry} onConfirmed={() => setSealConfirmed(true)} />}
+              {signature && gate.decision && (
+                <CryptographicSealPanel hash={signature} seq={0} decidedAt={formatTimestampUtc(gate.decision.ts)} />
+              )}
 
-              <AnimatePresence>
-                {sealConfirmed && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="flex flex-col gap-2 pt-1"
-                  >
-                    <p className="text-[11.5px] leading-snug text-text-muted">
-                      {decision === "approved"
-                        ? "PR merged. Evidence pack sealed and archived."
-                        : "Sent back to Patch Forge for revision."}
-                    </p>
-                    <Link
-                      href={decision === "approved" ? "/evidence" : "/remediation"}
-                      className="w-fit font-data text-[10.5px] text-amber hover:underline"
-                    >
-                      {decision === "approved"
-                        ? `view ${gateFinding.findingId} Evidence Final Report →`
-                        : `back to ${gateFinding.findingId} Remediation Forge →`}
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={reopen}
-                      className="mt-2 flex w-fit items-center gap-1 font-data text-[9px] uppercase tracking-[0.05em] text-text-dim/70 transition-colors hover:text-text-dim"
-                    >
-                      <IconLock size={9} strokeWidth={1.5} />
-                      reopen (admin)
-                    </button>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              <div className="flex flex-col gap-2 pt-1">
+                <p className="text-[11.5px] leading-snug text-text-muted">
+                  {decision === "approved"
+                    ? `Approved by ${gate.decision?.actor}. Evidence pack sealed on branch ${branchName ?? "(none)"}.`
+                    : `Rejected by ${gate.decision?.actor}. Sent back to Patch Forge for revision.`}
+                </p>
+                <Link
+                  href={decision === "approved" ? "/evidence" : "/remediation"}
+                  className="w-fit font-data text-[10.5px] text-amber hover:underline"
+                >
+                  {decision === "approved"
+                    ? `view ${finding.finding_id} Evidence Final Report →`
+                    : `back to ${finding.finding_id} Remediation Forge →`}
+                </Link>
+                <p className="mt-2 flex w-fit items-center gap-1 font-data text-[9px] uppercase tracking-[0.05em] text-text-dim/70">
+                  <IconLock size={9} strokeWidth={1.5} />
+                  decision recorded — persisted server-side
+                </p>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>

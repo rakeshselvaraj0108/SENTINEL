@@ -1,11 +1,61 @@
 import { CodePanels } from "./generate/CodePanels";
 import { GeneratedTestsPanel } from "./generate/GeneratedTestsPanel";
+import { asInvestigationResult, type JobRecord } from "@/lib/sentinel/api";
 
-export function GenerateView({ onSendToVerification }: { onSendToVerification: () => void }) {
+interface GenerateViewProps {
+  job: JobRecord | null;
+  starting: boolean;
+  onSendToVerification: () => void;
+}
+
+export function GenerateView({ job, starting, onSendToVerification }: GenerateViewProps) {
+  const result = job ? asInvestigationResult(job.result) : null;
+  const patch = result?.patch ?? null;
+
+  if (!job) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-3 border border-dashed border-border-soft p-8 text-center">
+        <p className="text-[12px] text-text-dim">No patch generated yet for this finding.</p>
+        <button
+          type="button"
+          onClick={onSendToVerification}
+          disabled={starting}
+          className="border border-amber/50 bg-amber-soft px-3 py-1.5 font-data text-[11px] uppercase tracking-[0.06em] text-amber transition-colors hover:bg-amber/20 disabled:opacity-50"
+        >
+          {starting ? "starting…" : "Generate patch"}
+        </button>
+      </div>
+    );
+  }
+
+  if (job.status === "queued" || job.status === "running") {
+    return (
+      <div className="flex h-full items-center justify-center border border-dashed border-border-soft p-8 text-center text-[12px] text-text-dim">
+        Investigation {job.status} — Patch Forge hasn&apos;t produced a fix yet.
+      </div>
+    );
+  }
+
+  if (job.status === "failed") {
+    return (
+      <div className="flex h-full items-center justify-center border border-dashed border-danger/40 p-8 text-center text-[12px] text-danger">
+        Investigation failed: {job.error}
+      </div>
+    );
+  }
+
+  if (!patch) {
+    return (
+      <div className="flex h-full items-center justify-center border border-dashed border-border-soft p-8 text-center text-[12px] text-text-dim">
+        Job completed but produced no patch proposal.
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3">
-      <CodePanels />
-      <GeneratedTestsPanel onSendToVerification={onSendToVerification} />
+      <CodePanels patch={patch} />
+      <GeneratedTestsPanel patch={patch} onSendToVerification={onSendToVerification} />
     </div>
   );
 }

@@ -136,3 +136,18 @@ def store_verified_fix(cwe_id: str, language: str, pattern: str, source_finding:
             }
         ],
     )
+
+
+def memory_bank_health() -> dict:
+    """Real health check: can each ChromaDB collection actually be queried
+    right now, and how many real documents does each hold. Used by the
+    Audit Persistence Monitor panel instead of a hardcoded 'healthy' flag."""
+    try:
+        counts = {
+            "investigations": _verdicts_collection.count(),
+            "remediation_patterns": _remediation_collection.count(),
+            "verified_fixes": _verified_fixes_collection.count(),
+        }
+        return {"healthy": True, "collections": counts}
+    except Exception as exc:  # noqa: BLE001 - report real failure, don't hide it
+        return {"healthy": False, "collections": {}, "error": str(exc)}
