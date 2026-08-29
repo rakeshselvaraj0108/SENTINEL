@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app import auth, decisions, ledger, orchestrator
+from app.agents import hunter as hunter_module
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
 from app.governance import gateway, identity, model_armor, registry
@@ -48,11 +49,25 @@ _findings_loaded_at: str | None = None
 
 
 def _load_findings(force: bool = False) -> list[dict]:
+    """Returns the cached grounded findings, scanning if needed.
+
+    A *degraded* scan - one where OSV/NVD/GHSA lookups failed rather than
+    genuinely not matching - is deliberately not cached. A transient DNS
+    blip during the first scan would otherwise pin an empty result for the
+    process lifetime and blank the whole dashboard with no explanation,
+    which is exactly what happened in testing. Not caching it means the
+    next poll simply retries.
+    """
     global _findings_cache, _findings_loaded_at
     with _findings_lock:
         if _findings_cache is None or force:
             findings = hunt(DEMO_REPO_DIR) if DEMO_REPO_DIR.exists() else hunt()
-            _findings_cache = [f.model_dump(mode="json") for f in findings]
+            fresh = [f.model_dump(mode="json") for f in findings]
+            if hunter_module.last_scan.degraded:
+                # Serve whatever we already had rather than overwriting good
+                # data with an under-reporting scan; retry on the next call.
+                return _findings_cache or fresh
+            _findings_cache = fresh
             _findings_loaded_at = datetime.now(timezone.utc).isoformat()
         return _findings_cache
 
@@ -749,7 +764,15 @@ def get_health():
     verified = [verify_signature(e) for e in all_evidence]
     integrity_pct = (sum(verified) / len(verified) * 100) if verified else 100.0
 
+    scan = hunter_module.last_scan
     return {
+        "scan": {
+            "raw": scan.raw,
+            "grounded": scan.grounded,
+            "unresolved": scan.unresolved,
+            "errored": scan.errored,
+            "degraded": scan.degraded,
+        },
         "memory_bank": mem_health,
         "evidence_integrity_pct": round(integrity_pct, 1),
         "evidence_count": len(all_evidence),

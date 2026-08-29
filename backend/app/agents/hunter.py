@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL
@@ -100,29 +101,69 @@ def parse_findings(audit_report: dict, source: str = "npm audit") -> list[Findin
     return findings
 
 
+@dataclass
+class ScanStats:
+    """How the last grounding pass went. The distinction that matters:
+    a finding dropped because its advisory genuinely isn't in OSV/NVD/GHSA
+    is a real result, but one dropped because the knowledge source was
+    unreachable is a *degraded scan* - and callers must be able to tell
+    those apart rather than both silently presenting as "no findings"."""
+
+    raw: int = 0
+    grounded: int = 0
+    unresolved: int = 0
+    errored: int = 0
+
+    @property
+    def degraded(self) -> bool:
+        """True when lookups failed outright, so this scan under-reports."""
+        return self.errored > 0
+
+
+last_scan = ScanStats()
+
+
 def _apply_grounding_gate(findings: list[Finding]) -> list[Finding]:
-    """Grounding gate: resolve each finding's advisory_id against real knowledge sources.
-    Return only confirmed findings; mark unresolved as UNVERIFIED (do not pass to Analyst).
+    """Grounding gate: resolve each finding's advisory_id against real
+    knowledge sources. Returns only confirmed findings; anything unresolved
+    is marked UNVERIFIED and withheld from Analyst.
+
+    Records the outcome in `last_scan` so a caller can distinguish "nothing
+    was found" from "we could not reach OSV/NVD/GHSA to check".
     """
-    grounded = []
-    unverified = []
+    global last_scan
+    stats = ScanStats(raw=len(findings))
+    grounded: list[Finding] = []
 
     for finding in findings:
         if not finding.advisory_id:
-            unverified.append(finding)
+            finding.grounding_status = "UNVERIFIED"
+            stats.unresolved += 1
             continue
 
         lookup = lookup_vulnerability(finding.advisory_id)
         if lookup.get("resolved"):
             finding.verified_advisory_record = lookup.get("record")
             finding.grounding_source = lookup.get("source")
+            finding.grounding_status = "VERIFIED"
             grounded.append(finding)
         else:
             finding.grounding_status = "UNVERIFIED"
-            unverified.append(finding)
+            if lookup.get("error"):
+                stats.errored += 1
+            else:
+                stats.unresolved += 1
 
-    if unverified:
-        print(f"[GROUNDING GATE] {len(unverified)} findings unresolved in OSV/NVD/GHSA (marked UNVERIFIED)")
+    stats.grounded = len(grounded)
+    last_scan = stats
+
+    if stats.errored:
+        print(
+            f"[GROUNDING GATE] DEGRADED SCAN: {stats.errored}/{stats.raw} lookups failed "
+            f"(knowledge source unreachable) - results under-report, not authoritative"
+        )
+    if stats.unresolved:
+        print(f"[GROUNDING GATE] {stats.unresolved} findings unresolved in OSV/NVD/GHSA (marked UNVERIFIED)")
     return grounded
 
 

@@ -113,3 +113,46 @@ def test_grounding_gate_does_not_fail_open_when_lookup_errors(monkeypatch):
         lambda _id: {"resolved": False, "source": None, "record": None, "error": "network down"},
     )
     assert hunter._apply_grounding_gate([_finding("GHSA-8cf7-32gw-wr33")]) == []
+
+
+# --- degraded-scan handling ----------------------------------------------
+
+
+def test_gate_distinguishes_unreachable_from_genuinely_unresolved(monkeypatch):
+    """These must not both present as "no findings": one is a real result,
+    the other means we could not check."""
+    from app.agents import hunter
+
+    monkeypatch.setattr(
+        hunter, "lookup_vulnerability",
+        lambda _id: {"resolved": False, "source": None, "record": None, "error": "network down"},
+    )
+    hunter._apply_grounding_gate([_finding("GHSA-a"), _finding("GHSA-b")])
+    assert hunter.last_scan.errored == 2
+    assert hunter.last_scan.degraded is True
+
+    monkeypatch.setattr(
+        hunter, "lookup_vulnerability",
+        lambda _id: {"resolved": False, "source": None, "record": None},
+    )
+    hunter._apply_grounding_gate([_finding("GHSA-a")])
+    assert hunter.last_scan.errored == 0
+    assert hunter.last_scan.degraded is False
+
+
+def test_a_degraded_scan_does_not_overwrite_good_cached_findings(monkeypatch):
+    """A transient DNS blip during a scan previously pinned an empty result
+    for the process lifetime and blanked the entire dashboard."""
+    from app.agents import hunter
+    from app import server
+
+    good = _finding("GHSA-real")
+    good.grounding_source = "osv"
+
+    monkeypatch.setattr(server, "_findings_cache", [good.model_dump(mode="json")])
+    # Both branches of the exists() check call server.hunt, which is patched.
+    monkeypatch.setattr(server, "hunt", lambda *a, **k: [])
+    monkeypatch.setattr(hunter, "last_scan", hunter.ScanStats(raw=25, grounded=0, errored=25))
+
+    result = server._load_findings(force=True)
+    assert len(result) == 1, "a degraded scan must not blank out known-good findings"

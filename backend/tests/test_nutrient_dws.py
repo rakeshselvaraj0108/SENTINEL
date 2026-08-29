@@ -108,7 +108,7 @@ def test_sign_writes_the_returned_binary_and_hashes_it(with_key, monkeypatch, tm
 
     seen = {}
 
-    def fake_post(url, headers=None, files=None, timeout=None):
+    def fake_post(url, headers=None, files=None, data=None, timeout=None):
         seen.update(url=url, files=files)
         return _Resp(200, signed_bytes)
 
@@ -118,6 +118,15 @@ def test_sign_writes_the_returned_binary_and_hashes_it(with_key, monkeypatch, tm
 
     assert seen["url"] == "https://api.nutrient.io/sign"
     assert "file" in seen["files"]  # documented field name
+    # `data` is required: omitting it gets a real 400 back with
+    # failingPaths [{"path": "$.data", "details": "must be present"}], and it
+    # must carry an application/json content type.
+    assert "data" in seen["files"]
+    _name, body, content_type = seen["files"]["data"]
+    assert content_type == "application/json"
+    import json as _json
+
+    assert _json.loads(body) == {}  # empty object = invisible signature
     assert out.read_bytes() == signed_bytes
     assert result["sha256"] == hashlib.sha256(signed_bytes).hexdigest()
     assert result["bytes"] == len(signed_bytes)

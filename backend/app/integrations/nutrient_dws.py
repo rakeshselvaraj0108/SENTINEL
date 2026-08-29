@@ -21,6 +21,12 @@ import os
 
 import requests
 
+# Importing config for its load_dotenv() side effect, so this module sees
+# NUTRIENT_API_KEY no matter how it's entered - the standalone preflight
+# (`python -m app.integrations.nutrient_dws`) doesn't go through the server,
+# and without this it reads a bare os.environ that .env was never loaded into.
+from app import config as _config  # noqa: F401
+
 BASE_URL = "https://api.nutrient.io"
 
 
@@ -56,7 +62,7 @@ def extract_document(file_path: str, schema: dict | None = None) -> dict:
     return resp.json()
 
 
-def sign_evidence_report(pdf_path: str, signed_out_path: str) -> dict:
+def sign_evidence_report(pdf_path: str, signed_out_path: str, sign_data: dict | None = None) -> dict:
     """Real call to POST /sign - applies a certificate-based digital
     signature to a rendered Evidence Report PDF, making it tamper-evident.
 
@@ -72,8 +78,19 @@ def sign_evidence_report(pdf_path: str, signed_out_path: str) -> dict:
     """
     headers = {"Authorization": f"Bearer {_api_key()}"}
     with open(pdf_path, "rb") as f:
+        # `data` must be present, and must carry an application/json content
+        # type - omitting it returns 400 with failingPaths $.data. An empty
+        # object is valid and produces an invisible signature, which is what
+        # we want here: the Evidence Report's page count varies per finding,
+        # so a fixed visible-signature rect could land on top of content.
         resp = requests.post(
-            f"{BASE_URL}/sign", headers=headers, files={"file": f}, timeout=120
+            f"{BASE_URL}/sign",
+            headers=headers,
+            files={
+                "file": (os.path.basename(pdf_path), f, "application/pdf"),
+                "data": (None, json.dumps(sign_data or {}), "application/json"),
+            },
+            timeout=120,
         )
     if resp.status_code != 200:
         raise NutrientDWSError(f"Nutrient DWS /sign error {resp.status_code}: {resp.text[:500]}")
