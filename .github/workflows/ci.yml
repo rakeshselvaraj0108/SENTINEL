@@ -39,7 +39,7 @@ jobs:
         run: python -m pytest -q
 
   frontend:
-    name: Frontend (lint, typecheck, build)
+    name: Frontend (typecheck, lint, test, build)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +56,9 @@ jobs:
 
       - name: Lint
         run: npx eslint src --max-warnings=0
+
+      - name: Unit tests
+        run: npm test
 
       - name: Build
         run: npm run build
