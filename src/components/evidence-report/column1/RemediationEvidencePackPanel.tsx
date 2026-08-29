@@ -1,24 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import clsx from "clsx";
-import { IconCopy, IconCheck } from "@tabler/icons-react";
+import { IconCopy, IconCheck, IconX } from "@tabler/icons-react";
 import { Panel } from "../../command-center/Panel";
 import { parseUnifiedDiff, truncateHash } from "@/lib/format";
+import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import type { FullEvidenceObject } from "@/lib/sentinel/api";
 
 export function RemediationEvidencePackPanel({ evidence, highlighted }: { evidence: FullEvidenceObject; highlighted: boolean }) {
-  const [copied, setCopied] = useState(false);
+  const { state: copyState, copy } = useCopyToClipboard();
   const diff = evidence.patch_proposal?.diff ?? "";
   const lines = useMemo(() => parseUnifiedDiff(diff), [diff]);
   const commitHash = evidence.commit ?? "no commit yet";
   const file = evidence.patch_proposal?.files_changed[0] ?? "no file changed yet";
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(commitHash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+  const handleCopy = () => copy(commitHash);
 
   return (
     <Panel
@@ -57,11 +54,17 @@ export function RemediationEvidencePackPanel({ evidence, highlighted }: { eviden
         <button
           type="button"
           onClick={handleCopy}
-          title={commitHash}
+          title={copyState === "failed" ? "Copy blocked by the browser - select the hash manually" : commitHash}
           className="flex shrink-0 items-center gap-1 text-text-muted transition-colors hover:text-text"
         >
           {truncateHash(commitHash)}
-          {copied ? <IconCheck size={11} strokeWidth={1.5} className="text-success" /> : <IconCopy size={11} strokeWidth={1.5} />}
+          {copyState === "copied" ? (
+            <IconCheck size={11} strokeWidth={1.5} className="text-success" />
+          ) : copyState === "failed" ? (
+            <IconX size={11} strokeWidth={1.5} className="text-danger" />
+          ) : (
+            <IconCopy size={11} strokeWidth={1.5} />
+          )}
         </button>
       </div>
     </Panel>

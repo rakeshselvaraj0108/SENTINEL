@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import { motion } from "framer-motion";
-import { IconCopy, IconCheck, IconShieldCheck } from "@tabler/icons-react";
+import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
+import { IconCopy, IconCheck, IconX, IconShieldCheck } from "@tabler/icons-react";
 
 interface CryptographicSealPanelProps {
   hash: string;
@@ -18,13 +18,9 @@ interface CryptographicSealPanelProps {
  * mounts. A signature you already have doesn't need to pretend to arrive.
  */
 export function CryptographicSealPanel({ hash, seq, decidedAt }: CryptographicSealPanelProps) {
-  const [copied, setCopied] = useState(false);
+  const { state: copyState, copy } = useCopyToClipboard();
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(hash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+  const handleCopy = () => copy(hash);
 
   return (
     <motion.div
@@ -50,10 +46,12 @@ export function CryptographicSealPanel({ hash, seq, decidedAt }: CryptographicSe
               type="button"
               onClick={handleCopy}
               className="ml-1.5 inline-flex translate-y-[2px] text-text-dim transition-colors hover:text-text"
-              title={hash}
+              title={copyState === "failed" ? "Copy blocked by the browser - select the hash manually" : hash}
             >
-              {copied ? (
+              {copyState === "copied" ? (
                 <IconCheck size={11} strokeWidth={1.5} className="text-success" />
+              ) : copyState === "failed" ? (
+                <IconX size={11} strokeWidth={1.5} className="text-danger" />
               ) : (
                 <IconCopy size={11} strokeWidth={1.5} />
               )}

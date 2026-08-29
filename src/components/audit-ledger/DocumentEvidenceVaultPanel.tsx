@@ -1,33 +1,37 @@
 "use client";
 
 import { useState } from "react";
-import { IconFileTypePdf, IconCopy, IconCheck, IconArrowLeft } from "@tabler/icons-react";
+import { IconFileTypePdf, IconCopy, IconCheck, IconX, IconArrowLeft } from "@tabler/icons-react";
 import { Panel } from "../command-center/Panel";
 import { DwsViewerSlot } from "../shared/DwsViewerSlot";
 import { useEvidenceList } from "@/lib/sentinel/hooks";
+import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import { truncateHash } from "@/lib/format";
 import type { FullEvidenceObject } from "@/lib/sentinel/api";
 
 function VaultRow({ doc, onOpen }: { doc: FullEvidenceObject; onOpen: (doc: FullEvidenceObject) => void }) {
-  const [copied, setCopied] = useState(false);
+  const { state: copyState, copy } = useCopyToClipboard();
   const hash = doc.signature ?? "unsigned";
 
-  const handleCopy = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    await navigator.clipboard.writeText(hash);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+  const handleCopy = () => {
+    void copy(hash);
   };
 
+  // The copy control is a sibling of the row button, not nested inside it:
+  // an interactive element inside another interactive element is invalid
+  // HTML, and as a role="button" span it had no keyboard handler at all, so
+  // keyboard users could focus the hash but never actually copy it.
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(doc)}
-      className="flex w-full items-start gap-2 border-b border-border-soft px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-white/[0.02]"
-    >
+    <div className="flex items-start gap-2 border-b border-border-soft px-3 py-2 transition-colors last:border-b-0 hover:bg-white/[0.02]">
       <IconFileTypePdf size={15} strokeWidth={1.5} className="mt-0.5 shrink-0 text-text-dim" />
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[11px] text-text">EVIDENCE-{doc.finding_id}.json</p>
+        <button
+          type="button"
+          onClick={() => onOpen(doc)}
+          className="block w-full truncate text-left text-[11px] text-text hover:underline"
+        >
+          EVIDENCE-{doc.finding_id}.json
+        </button>
         <div className="mt-1 flex items-center gap-2">
           <span
             className={`border px-1 py-0.5 font-data text-[8.5px] uppercase tracking-[0.05em] ${
@@ -36,19 +40,25 @@ function VaultRow({ doc, onOpen }: { doc: FullEvidenceObject; onOpen: (doc: Full
           >
             {doc.signature ? "SHA-256 sealed" : "unsigned"}
           </span>
-          <span
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={handleCopy}
-            title={hash}
+            aria-label={`Copy evidence signature for ${doc.finding_id}`}
+            title={copyState === "failed" ? "Copy blocked by the browser - select the hash manually" : hash}
             className="flex items-center gap-1 font-data text-[9.5px] text-text-dim transition-colors hover:text-text-muted"
           >
             {truncateHash(hash)}
-            {copied ? <IconCheck size={10} strokeWidth={1.5} className="text-success" /> : <IconCopy size={10} strokeWidth={1.5} />}
-          </span>
+            {copyState === "copied" ? (
+              <IconCheck size={10} strokeWidth={1.5} className="text-success" />
+            ) : copyState === "failed" ? (
+              <IconX size={10} strokeWidth={1.5} className="text-danger" />
+            ) : (
+              <IconCopy size={10} strokeWidth={1.5} />
+            )}
+          </button>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
