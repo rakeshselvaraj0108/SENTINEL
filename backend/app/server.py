@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import auth, decisions, ledger, memory, orchestrator
+from app import auth, decisions, ledger, orchestrator
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
 from app.governance import gateway, identity, model_armor, registry
@@ -736,7 +736,15 @@ def get_health():
     three hardcoded module-level constants."""
     from app.agents.evidence_agent import verify_signature
 
-    mem_health = memory.memory_bank_health()
+    # Imported here rather than at module scope: app.memory pulls in
+    # ChromaDB + ONNX, and the API should still start and serve every other
+    # route if the vector store is unavailable, rather than failing to boot.
+    try:
+        from app import memory
+
+        mem_health = memory.memory_bank_health()
+    except Exception as exc:  # noqa: BLE001 - report it, don't fail the probe
+        mem_health = {"healthy": False, "collections": {}, "error": str(exc)}
     all_evidence = get_store().list_evidence()
     verified = [verify_signature(e) for e in all_evidence]
     integrity_pct = (sum(verified) / len(verified) * 100) if verified else 100.0
