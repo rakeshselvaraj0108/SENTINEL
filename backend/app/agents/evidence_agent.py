@@ -137,9 +137,13 @@ def _maybe_dws_seal(finding_id: str, payload: dict, signature: str) -> str | Non
     try:
         html = render_report_html(payload, signature)
         pdf_path = EVIDENCE_DIR / f"{finding_id}.pdf"
-        result = nutrient_dws.seal_evidence_document(html, str(pdf_path))
-        response = result.get("response") or {}
-        return response.get("id") or response.get("signature") or json.dumps(response)[:200]
+        signed_path = EVIDENCE_DIR / f"{finding_id}.signed.pdf"
+        result = nutrient_dws.seal_evidence_document(html, str(pdf_path), str(signed_path))
+        # The seal reference is the SHA-256 of the actual signed PDF that DWS
+        # returned. That identifies the exact issued artifact and anyone
+        # holding the file can recompute it - unlike an opaque server-side id
+        # that a reader has no way to check.
+        return f"dws:sha256:{result['sha256']}"
     except Exception as exc:  # noqa: BLE001 - a seal failure must not lose the evidence record
         print(f"[evidence-agent] Nutrient DWS seal failed for {finding_id}: {exc}")
         return None
