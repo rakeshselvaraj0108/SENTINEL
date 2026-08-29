@@ -9,8 +9,12 @@ import json
 from typing import Any
 
 from app.knowledge import osv_client, ghsa_client, nvd_client, epss_client, owasp_patterns
-from app.memory import retrieve_similar_verdicts, retrieve_verified_fix
 from app.agents.reachability import find_reachability_evidence
+
+# app.memory is imported lazily inside the two functions that actually use
+# it. It pulls in ChromaDB (a heavyweight vector store with ONNX runtime),
+# and Hunter's grounding gate - which only needs lookup_vulnerability below
+# - has no reason to require it just to resolve an advisory ID.
 
 
 def lookup_vulnerability(advisory_id: str) -> dict[str, Any]:
@@ -73,6 +77,8 @@ def search_memory_bank(repo: str, cwe_class: str) -> dict[str, Any]:
             "verified_fixes": [{cwe_class, language, pattern, timestamp}, ...],
         }
     """
+    from app.memory import retrieve_similar_verdicts, retrieve_verified_fix
+
     verdicts = retrieve_similar_verdicts(repo, cwe_class)
     verified_fixes = retrieve_verified_fix(cwe_class)
 
@@ -133,6 +139,8 @@ def retrieve_fix_pattern(cwe_id: str, language: str) -> dict[str, Any]:
             "confidence": "high" | "medium",
         }
     """
+    from app.memory import retrieve_verified_fix
+
     verified = retrieve_verified_fix(cwe_id, language)
     if verified:
         return {

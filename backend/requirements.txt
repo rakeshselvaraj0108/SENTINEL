@@ -24,3 +24,7 @@ boto3==1.43.77
 
 # Cryptographic signing (for evidence seals, fallback to DWS)
 sigstore==4.5.0
+
+# Test suite
+pytest==9.1.1
+httpx==0.28.1

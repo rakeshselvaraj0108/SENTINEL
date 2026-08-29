@@ -12,17 +12,16 @@ Run with:
 
 from __future__ import annotations
 
-import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import decisions, memory, orchestrator
+from app import auth, decisions, ledger, memory, orchestrator
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
 from app.governance import gateway, identity, model_armor, registry
@@ -90,7 +89,7 @@ def list_findings():
 
 
 @app.post("/api/findings/refresh")
-def refresh_findings():
+def refresh_findings(principal: str = Depends(auth.require_principal)):
     return {"findings": _load_findings(force=True)}
 
 
@@ -115,7 +114,9 @@ _investigation_lock = Lock()
 
 
 @app.post("/api/investigations")
-def start_investigation(req: StartInvestigationRequest):
+def start_investigation(
+    req: StartInvestigationRequest, principal: str = Depends(auth.require_principal)
+):
     finding_id = req.finding_id or _default_finding_id()
     if finding_id is None:
         raise HTTPException(400, "No findings available to investigate.")
@@ -141,7 +142,7 @@ def start_investigation(req: StartInvestigationRequest):
 
 
 @app.post("/api/jobs/{job_id}/abort")
-def abort_job(job_id: str):
+def abort_job(job_id: str, principal: str = Depends(auth.require_principal)):
     queue = get_queue()
     job = queue.get(job_id)
     if job is None:
@@ -336,6 +337,10 @@ def system_info():
         "nutrient_configured": bool(os.environ.get("NUTRIENT_API_KEY")),
         "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
         "github_configured": bool(os.environ.get("GITHUB_TOKEN")),
+        # Surfaced so the security posture is visible rather than assumed.
+        # When false, mutating endpoints accept unauthenticated calls and
+        # decisions are attributed to an explicitly-labelled dev principal.
+        "auth_enabled": auth.auth_enabled(),
     }
 
 
@@ -347,13 +352,19 @@ def system_info():
 class DecisionRequest(BaseModel):
     finding_id: str
     decision: str  # "approved" | "rejected"
-    actor: str = "operator"
 
 
 @app.post("/api/decisions")
-def post_decision(req: DecisionRequest):
+def post_decision(req: DecisionRequest, principal: str = Depends(auth.require_principal)):
+    """Records a human Deployment Gate decision.
+
+    The actor is the *authenticated* principal, never a client-supplied
+    field - this endpoint is the point where a person takes responsibility
+    for shipping a patch, so the name written into the evidence record and
+    the audit ledger has to be one the server verified.
+    """
     try:
-        return decisions.set_decision(req.finding_id, req.decision, req.actor)
+        return decisions.set_decision(req.finding_id, req.decision, principal)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
 
@@ -656,22 +667,6 @@ def get_state(finding_id: str | None = None):
 # chain is a derived view, not a second copy of the truth.
 # --------------------------------------------------------------------------
 
-_LEDGER_GENESIS = "sha256:genesis"
-
-
-def _ledger_payload(finding_id: str, agent: str, action: str, detail: str, ts: str) -> str:
-    # Exact same format as the frontend's ledgerEntryPayload() in
-    # lib/ledger-data.ts, so a client-side SHA-256 re-hash (same algorithm,
-    # same input string) reproduces the identical chain - the whole point
-    # of a hash chain being independently verifiable, not merely displayed.
-    return f"{finding_id}|{agent}|{action}|{detail}|{ts}"
-
-
-def _sha256_chain_hash(prev_hash: str, payload: str) -> str:
-    digest = hashlib.sha256((prev_hash + payload).encode("utf-8")).hexdigest()
-    return f"sha256:{digest}"
-
-
 def _build_ledger() -> list[dict]:
     findings = _load_findings()
     discovered_at = _findings_loaded_at or datetime.now(timezone.utc).isoformat()
@@ -707,10 +702,10 @@ def _build_ledger() -> list[dict]:
     raw_events.sort(key=lambda e: e[0])
 
     chain: list[dict] = []
-    prev_hash = _LEDGER_GENESIS
+    prev_hash = ledger.GENESIS
     for seq, (ts, finding_id, title, agent, action, detail) in enumerate(raw_events):
-        payload = _ledger_payload(finding_id, agent, action, detail, ts)
-        entry_hash = _sha256_chain_hash(prev_hash, payload)
+        payload = ledger.ledger_payload(finding_id, agent, action, detail, ts)
+        entry_hash = ledger.chain_hash(prev_hash, payload)
         chain.append({
             "seq": seq,
             "findingId": finding_id,
