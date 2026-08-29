@@ -15,6 +15,7 @@ that's set, rather than silently returning a fabricated result.
 
 from __future__ import annotations
 
+import json
 import os
 
 import requests
@@ -47,8 +48,6 @@ def extract_document(file_path: str, schema: dict | None = None) -> dict:
         files = {"file": f}
         data = {}
         if schema is not None:
-            import json
-
             data["extract_schema"] = json.dumps(schema)
         resp = requests.post(f"{BASE_URL}/build", headers=headers, files=files, data=data, timeout=60)
     if resp.status_code != 200:
@@ -74,3 +73,37 @@ def sign_evidence_report(pdf_path: str) -> dict:
 
 def is_configured() -> bool:
     return bool(os.environ.get("NUTRIENT_API_KEY"))
+
+
+def html_to_pdf(html: str, out_path: str) -> str:
+    """Real call to POST /build - renders an HTML document to PDF. This is
+    the first half of sealing an Evidence Report: DWS can only digitally
+    sign a document, and the Evidence Agent's native output is JSON, so the
+    record is rendered to a real PDF here before /sign is called on it."""
+    headers = {"Authorization": f"Bearer {_api_key()}"}
+    instructions = {"parts": [{"html": "index.html"}]}
+    files = {
+        "index.html": ("index.html", html.encode("utf-8"), "text/html"),
+    }
+    data = {"instructions": json.dumps(instructions)}
+    resp = requests.post(f"{BASE_URL}/build", headers=headers, files=files, data=data, timeout=90)
+    if resp.status_code != 200:
+        raise NutrientDWSError(f"Nutrient DWS /build error {resp.status_code}: {resp.text[:500]}")
+    with open(out_path, "wb") as f:
+        f.write(resp.content)
+    return out_path
+
+
+def seal_evidence_document(html: str, pdf_out_path: str) -> dict:
+    """Full real DWS round trip for one Evidence Report: render the record
+    to PDF via /build, then digitally seal that PDF via /sign. Returns the
+    real signing response plus the local path of the sealed PDF.
+
+    Raises NutrientDWSError if NUTRIENT_API_KEY isn't set or either call
+    fails - it never degrades to a fabricated seal, because a seal that
+    wasn't actually issued by DWS would make the Evidence Report claim
+    something untrue.
+    """
+    html_to_pdf(html, pdf_out_path)
+    signed = sign_evidence_report(pdf_out_path)
+    return {"pdf_path": pdf_out_path, "response": signed}

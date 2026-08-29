@@ -20,17 +20,20 @@ import { verifyEvidence } from "@/lib/sentinel/api";
  * so the verify state resets for the newly selected document.
  */
 export function DwsViewerSlot({
-  title = "Nutrient DWS Seal",
+  title = "Evidence Seal",
   filename,
   documentId,
   verificationId,
   findingId,
+  dwsSealed = false,
 }: {
   title?: string;
   filename?: string;
   documentId: string;
   verificationId: string;
   findingId: string;
+  /** True only when a real Nutrient DWS seal was issued for this record. */
+  dwsSealed?: boolean;
 }) {
   const [verifyState, setVerifyState] = useState<"idle" | "checking" | "verified" | "invalid" | "error">("idle");
 
@@ -50,10 +53,15 @@ export function DwsViewerSlot({
       headerRight={<span className="font-data text-[9.5px] text-text-dim">{verificationId}</span>}
       bodyClassName="flex flex-col gap-3 p-3"
     >
-      <div className="flex h-28 items-center justify-center border border-dashed border-border-soft bg-black/20">
-        <div className="flex flex-col items-center gap-1.5 text-text-dim">
+      <div className="flex h-28 items-center justify-center border border-dashed border-border-soft bg-black/20 px-3">
+        <div className="flex flex-col items-center gap-1.5 text-center text-text-dim">
           <IconFileTypePdf size={22} strokeWidth={1.2} />
-          <span className="font-data text-[9.5px]">{filename ?? "DWS Viewer embed slot"}</span>
+          <span className="font-data text-[9.5px]">{filename ?? `EVIDENCE-${verificationId}`}</span>
+          <span className="font-data text-[8.5px] leading-snug">
+            {dwsSealed
+              ? "rendered to PDF and digitally sealed via Nutrient DWS"
+              : "SHA-256 content signature — set NUTRIENT_API_KEY to also seal via Nutrient DWS"}
+          </span>
         </div>
       </div>
 

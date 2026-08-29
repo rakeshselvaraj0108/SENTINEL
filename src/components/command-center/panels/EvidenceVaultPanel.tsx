@@ -31,7 +31,7 @@ export function EvidenceVaultPanel({ evidenceDoc, findingId, loading, error }: E
             <IconArrowUpRight size={10} strokeWidth={1.5} />
           </Link>
         ) : (
-          <span className="text-[10px] uppercase tracking-[0.06em] text-text-dim">Nutrient DWS Sealed</span>
+          <span className="text-[10px] uppercase tracking-[0.06em] text-text-dim">Evidence Vault</span>
         )
       }
       bodyClassName="p-3"
@@ -67,8 +67,15 @@ export function EvidenceVaultPanel({ evidenceDoc, findingId, loading, error }: E
                     "text-[10px] uppercase tracking-[0.06em]",
                     evidenceDoc.sealed ? "text-success" : "text-text-dim"
                   )}
+                  title={
+                    evidenceDoc.dwsSealed
+                      ? "Digitally sealed via the Nutrient DWS signing API"
+                      : evidenceDoc.sealed
+                        ? "SHA-256 content signature. Set NUTRIENT_API_KEY to additionally seal via Nutrient DWS."
+                        : undefined
+                  }
                 >
-                  {evidenceDoc.sealed ? "sealed" : "unsigned"}
+                  {evidenceDoc.dwsSealed ? "DWS sealed" : evidenceDoc.sealed ? "SHA-256 sealed" : "unsigned"}
                 </span>
               </div>
               <p className="truncate font-data text-[10px] text-text-dim" title={evidenceDoc.hash}>

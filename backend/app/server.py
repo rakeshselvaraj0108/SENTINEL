@@ -22,7 +22,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import decisions, memory
+from app import decisions, memory, orchestrator
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
 from app.governance import gateway, identity, model_armor, registry
@@ -328,11 +328,14 @@ def evaluate_policy(req: PolicyEvalRequest):
 @app.get("/api/system-info")
 def system_info():
     return {
+        "orchestrator": orchestrator.active_orchestrator(),
         "queue_backend": os.environ.get("SENTINEL_QUEUE_BACKEND", "local"),
         "store_backend": os.environ.get("SENTINEL_STORE_BACKEND", "local"),
         "gcp_project_id": GCP_PROJECT_ID,
         "demo_repo_url": DEMO_REPO_URL,
         "nutrient_configured": bool(os.environ.get("NUTRIENT_API_KEY")),
+        "gemini_configured": bool(os.environ.get("GEMINI_API_KEY")),
+        "github_configured": bool(os.environ.get("GITHUB_TOKEN")),
     }
 
 
@@ -599,6 +602,10 @@ def get_state(finding_id: str | None = None):
             "hash": evidence.get("signature") or evidence.get("dws_seal") or "unsigned",
             "timestamp": timeline[-1]["ts"] if timeline else evidence.get("ts", ""),
             "sealed": bool(evidence.get("signature")),
+            # Reported separately so the UI can say which seal it actually
+            # has, rather than claiming a Nutrient DWS seal that is only
+            # issued when NUTRIENT_API_KEY is configured.
+            "dwsSealed": bool(evidence.get("dws_seal")),
             "reviewStatus": (decision or {}).get("decision") or "pending",
         }
 

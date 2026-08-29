@@ -24,17 +24,32 @@ from app.agent_tools import (
     patch_forge_generate_patch,
     re_verifier_confirm_fix,
 )
+from app import orchestrator
 from app.queue import Job, get_queue
 from app.queue.base import JobQueue
 
 
 def run_investigation(finding_id: str) -> dict:
-    """The real six-stage loop, stages 2-6 (Hunter's scan already ran to
-    produce finding_id in the first place). Every step below is the exact
-    same real function a synchronous CLI run would call - async execution
-    changes when it runs, never what it does. Each stage's real output is
-    threaded into the next, ending with Evidence Agent sealing the actual
-    verdict/patch/re-verification results - not just a bare "detected" entry."""
+    """Runs the real six-stage loop, stages 2-6 (Hunter's scan already ran to
+    produce finding_id in the first place), through whichever orchestrator
+    SENTINEL_ORCHESTRATOR selects - see app/orchestrator.py. All three
+    options execute the exact same underlying agent functions; only who
+    decides the call order differs."""
+    choice = orchestrator.active_orchestrator()
+    if choice == "adk":
+        return orchestrator.run_via_adk(finding_id)
+    if choice == "strands":
+        return orchestrator.run_via_strands(finding_id)
+    return run_investigation_direct(finding_id)
+
+
+def run_investigation_direct(finding_id: str) -> dict:
+    """The deterministic default: call each real agent function in order and
+    thread each stage's real output into the next, ending with Evidence Agent
+    sealing the actual verdict/patch/re-verification results - not just a
+    bare "detected" entry. No orchestration LLM is involved in choosing the
+    order, so this path is reproducible and costs nothing beyond the agents'
+    own Gemini calls."""
     verdict = analyst_assess_relevance(finding_id)
     patch = patch_forge_generate_patch(finding_id)
     reverify_result = re_verifier_confirm_fix(finding_id, patch["branch_name"], patch_proposal=patch)

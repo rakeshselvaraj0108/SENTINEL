@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import WORKDIR
+from app.integrations import nutrient_dws
 from app.schemas import (
     EvidenceObject,
     Finding,
@@ -60,6 +61,88 @@ def verify_signature(evidence: dict) -> bool:
         "patch_proposal": evidence.get("patch_proposal"),
     }
     return _sign(payload) == evidence.get("signature")
+
+
+def render_report_html(payload: dict, signature: str) -> str:
+    """Renders the sealed evidence payload as a real, self-contained HTML
+    document. This is what Nutrient DWS /build converts to the PDF that
+    /sign then seals - DWS can only sign a document, and the Evidence
+    Agent's native output is JSON, so a real document has to exist first."""
+    def esc(v: object) -> str:
+        return (
+            str(v)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+        )
+
+    rows = "".join(
+        f"<tr><td>{esc(t['actor'])}</td><td>{esc(t['action'])}</td><td>{esc(t['ts'])}</td></tr>"
+        for t in payload.get("timeline", [])
+    )
+    verification = "".join(
+        f"<li><b>{esc(vr['scenario'])}</b> &rarr; {esc(vr['result'])} "
+        f"(sandbox {esc(vr['sandbox_id'])}, {esc(vr['duration_ms'])}ms)<br/>{esc(vr['observed'])}</li>"
+        for vr in payload.get("verification_results", [])
+    )
+    verdict = payload.get("verdict") or {}
+    patch = payload.get("patch_proposal") or {}
+
+    return f"""<!doctype html>
+<html><head><meta charset="utf-8"><title>SENTINEL Evidence Report {esc(payload['finding_id'])}</title>
+<style>
+body{{font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;margin:40px;color:#111;line-height:1.5}}
+h1{{font-size:20px;margin-bottom:4px}} h2{{font-size:14px;margin-top:24px;border-bottom:1px solid #ddd;padding-bottom:4px}}
+table{{border-collapse:collapse;width:100%;font-size:11px}} td,th{{border:1px solid #ddd;padding:6px;text-align:left;vertical-align:top}}
+code,pre{{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px;background:#f6f6f6;padding:8px;display:block;white-space:pre-wrap;word-break:break-all}}
+.meta{{font-size:11px;color:#555}} ul{{font-size:11px;padding-left:18px}} li{{margin-bottom:8px}}
+</style></head><body>
+<h1>SENTINEL Evidence Report</h1>
+<p class="meta">{esc(payload['finding_id'])} &middot; {esc(payload.get('repo'))} &middot;
+final status: <b>{esc(payload.get('final_status'))}</b></p>
+
+<h2>Relevance verdict</h2>
+<p class="meta">{esc(verdict.get('verdict', 'not recorded'))}</p>
+<p style="font-size:11px">{esc(verdict.get('reasoning', ''))}</p>
+
+<h2>Sandbox verification</h2>
+<ul>{verification or "<li>No scenarios recorded.</li>"}</ul>
+
+<h2>Remediation</h2>
+<p class="meta">branch: {esc(patch.get('branch_name', 'none'))} &middot;
+files: {esc(", ".join(patch.get('files_changed', [])) or "none")}</p>
+<pre>{esc(patch.get('diff', 'No patch generated.'))}</pre>
+
+<h2>Audit trail</h2>
+<table><tr><th>Actor</th><th>Action</th><th>Timestamp</th></tr>{rows}</table>
+
+<h2>Cryptographic signature</h2>
+<pre>{esc(signature)}</pre>
+<p class="meta">SHA-256 over the canonical JSON of this record. Any change to the
+content above changes this value.</p>
+</body></html>"""
+
+
+def _maybe_dws_seal(finding_id: str, payload: dict, signature: str) -> str | None:
+    """Seals the Evidence Report through the real Nutrient DWS pipeline
+    (/build to PDF, then /sign) when NUTRIENT_API_KEY is configured.
+
+    Returns None when DWS isn't configured - the record still carries its
+    own real SHA-256 signature, and the UI reports "SHA-256 sealed" rather
+    than claiming a DWS seal that was never issued. A DWS failure is
+    logged and also yields None, never a fabricated seal.
+    """
+    if not nutrient_dws.is_configured():
+        return None
+    try:
+        html = render_report_html(payload, signature)
+        pdf_path = EVIDENCE_DIR / f"{finding_id}.pdf"
+        result = nutrient_dws.seal_evidence_document(html, str(pdf_path))
+        response = result.get("response") or {}
+        return response.get("id") or response.get("signature") or json.dumps(response)[:200]
+    except Exception as exc:  # noqa: BLE001 - a seal failure must not lose the evidence record
+        print(f"[evidence-agent] Nutrient DWS seal failed for {finding_id}: {exc}")
+        return None
 
 
 def _resolve_commit(repo_dir: Path | None, branch_name: str | None) -> str | None:
@@ -152,7 +235,7 @@ def assemble_evidence(
         timeline=timeline,
         final_status=final_status,
         signature=signature,
-        dws_seal=None,
+        dws_seal=_maybe_dws_seal(finding.finding_id, payload, signature),
         verdict=verdict,
         verification_results=verification_results,
         patch_proposal=patch_proposal,

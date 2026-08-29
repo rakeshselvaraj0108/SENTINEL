@@ -119,10 +119,31 @@ export function TopBar({ job = null, starting = false, aborting = false, onStart
           <p className="mb-2 text-[10px] uppercase tracking-[0.06em] text-text-dim">system info (live)</p>
           {systemInfo ? (
             <dl className="space-y-1">
+              <div className="flex justify-between">
+                <dt>orchestrator</dt>
+                <dd className="text-amber">{systemInfo.orchestrator}</dd>
+              </div>
               <div className="flex justify-between"><dt>queue backend</dt><dd className="text-text">{systemInfo.queue_backend}</dd></div>
               <div className="flex justify-between"><dt>store backend</dt><dd className="text-text">{systemInfo.store_backend}</dd></div>
               <div className="flex justify-between"><dt>gcp project</dt><dd className="text-text">{systemInfo.gcp_project_id ?? "not set"}</dd></div>
-              <div className="flex justify-between"><dt>nutrient dws</dt><dd className="text-text">{systemInfo.nutrient_configured ? "configured" : "not set"}</dd></div>
+              <div className="flex justify-between">
+                <dt>gemini api</dt>
+                <dd className={systemInfo.gemini_configured ? "text-success" : "text-text-dim"}>
+                  {systemInfo.gemini_configured ? "configured" : "not set"}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>github api</dt>
+                <dd className={systemInfo.github_configured ? "text-success" : "text-text-dim"}>
+                  {systemInfo.github_configured ? "configured" : "not set"}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>nutrient dws</dt>
+                <dd className={systemInfo.nutrient_configured ? "text-success" : "text-text-dim"}>
+                  {systemInfo.nutrient_configured ? "configured" : "not set"}
+                </dd>
+              </div>
             </dl>
           ) : (
             <p>unreachable</p>

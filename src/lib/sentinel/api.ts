@@ -86,6 +86,8 @@ export interface EvidenceDocSummary {
   hash: string;
   timestamp: string;
   sealed: boolean;
+  /** True only when a real Nutrient DWS seal was issued (requires NUTRIENT_API_KEY). */
+  dwsSealed: boolean;
   reviewStatus: "pending" | "approved" | "rejected";
 }
 
@@ -128,11 +130,15 @@ export function abortJob(jobId: string): Promise<JobRecord> {
 }
 
 export interface SystemInfo {
+  /** Which orchestration layer actually drives the agents: direct | adk | strands. */
+  orchestrator: string;
   queue_backend: string;
   store_backend: string;
   gcp_project_id: string | null;
   demo_repo_url: string;
   nutrient_configured: boolean;
+  gemini_configured: boolean;
+  github_configured: boolean;
 }
 
 export function getSystemInfo(): Promise<SystemInfo> {

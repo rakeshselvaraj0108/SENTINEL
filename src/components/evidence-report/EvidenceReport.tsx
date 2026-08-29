@@ -60,7 +60,9 @@ function EvidenceReportInner() {
                 <ExecutionTimelineLink findingId={evidence.finding_id} />
                 <CompleteSecurePanel evidence={evidence} highlighted={selectedTarget === "signoff"} />
                 <DwsViewerSlot
-                  documentId={evidence.signature ?? "unsigned"}
+                  title={evidence.dws_seal ? "Nutrient DWS Seal" : "Evidence Seal (SHA-256)"}
+                  dwsSealed={Boolean(evidence.dws_seal)}
+                  documentId={evidence.dws_seal ?? evidence.signature ?? "unsigned"}
                   verificationId={evidence.finding_id}
                   findingId={evidence.finding_id}
                 />
