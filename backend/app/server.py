@@ -214,16 +214,90 @@ def get_evidence(finding_id: str):
 
 @app.get("/api/evidence/{finding_id}/verify")
 def verify_evidence(finding_id: str):
-    """Real per-document seal check: recompute the signature from the
-    record's current content and compare against what's stored. This is
-    what DwsViewerSlot's "verify seal" button actually calls now, instead
-    of a bare setTimeout pretending to check something."""
-    from app.agents.evidence_agent import verify_signature
+    """Verifies both seals a sealed record can carry, independently.
+
+    They attest different things and can disagree, which is the point:
+
+    - content signature: SHA-256 recomputed over the record's own canonical
+      JSON. Catches any edit to the stored data. Self-contained and offline.
+    - DWS seal: the digest of the CAdES-signed PDF that Nutrient issued,
+      recomputed from the artifact still on disk. Catches the signed
+      document being swapped, truncated, or deleted after the fact.
+
+    A record whose JSON still verifies but whose signed PDF is missing or
+    altered is a materially different situation from one where both hold,
+    and a reader deserves to be told which.
+    """
+    import hashlib
+
+    from app.agents.evidence_agent import EVIDENCE_DIR, verify_signature
 
     doc = get_store().get_evidence(finding_id)
     if doc is None:
         raise HTTPException(404, f"No evidence sealed yet for {finding_id}")
-    return {"finding_id": finding_id, "valid": verify_signature(doc), "signature": doc.get("signature")}
+
+    content_valid = verify_signature(doc)
+
+    dws_seal = doc.get("dws_seal")
+    signed_pdf = EVIDENCE_DIR / f"{finding_id}.signed.pdf"
+    if not dws_seal:
+        dws = {"present": False, "valid": None, "reason": "no DWS seal on this record"}
+    elif not signed_pdf.exists():
+        dws = {"present": True, "valid": False, "reason": "signed PDF is missing from the evidence store"}
+    else:
+        actual = f"dws:sha256:{hashlib.sha256(signed_pdf.read_bytes()).hexdigest()}"
+        dws = {
+            "present": True,
+            "valid": actual == dws_seal,
+            "recomputed": actual,
+            "bytes": signed_pdf.stat().st_size,
+            "reason": None if actual == dws_seal else "signed PDF does not match the recorded seal",
+        }
+
+    return {
+        "finding_id": finding_id,
+        # Overall validity requires every seal the record claims to hold.
+        "valid": content_valid and (dws["valid"] is not False),
+        "content_signature": {"valid": content_valid, "signature": doc.get("signature")},
+        "dws": {**dws, "seal": dws_seal},
+    }
+
+
+@app.get("/api/evidence/{finding_id}/document")
+def get_evidence_document(finding_id: str, variant: str = "signed", download: bool = False):
+    """Serves the real Evidence Report PDF so the signed artifact is
+    actually reachable. Producing a certificate-signed document and then
+    giving nobody a way to open it defeats the purpose - the whole claim is
+    that a third party can verify this in ordinary PDF tooling.
+
+    variant=signed   the CAdES-signed PDF Nutrient DWS returned
+    variant=unsigned the rendered report before signing
+    download=true    force a save instead of inline display. The HTML
+                     `download` attribute is ignored cross-origin, and the
+                     dashboard and API are on different ports, so the
+                     disposition has to come from the server.
+    """
+    from fastapi.responses import FileResponse
+
+    from app.agents.evidence_agent import EVIDENCE_DIR
+
+    if variant not in ("signed", "unsigned"):
+        raise HTTPException(400, "variant must be 'signed' or 'unsigned'")
+
+    suffix = ".signed.pdf" if variant == "signed" else ".pdf"
+    path = EVIDENCE_DIR / f"{finding_id}{suffix}"
+    if not path.exists():
+        raise HTTPException(
+            404,
+            f"No {variant} PDF for {finding_id}. PDFs are produced by the Nutrient DWS "
+            "sealing step, which requires NUTRIENT_API_KEY to be configured.",
+        )
+    disposition = "attachment" if download else "inline"
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'{disposition}; filename="EVIDENCE-{finding_id}{suffix}"'},
+    )
 
 
 @app.get("/api/deployment-gate/pending")

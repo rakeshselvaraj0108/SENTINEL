@@ -302,8 +302,45 @@ export function listEvidence(): Promise<{ evidence: FullEvidenceObject[] }> {
   return apiFetch("/api/evidence");
 }
 
-export function verifyEvidence(findingId: string): Promise<{ finding_id: string; valid: boolean; signature: string | null }> {
+/**
+ * Result of verifying a sealed record. The two seals attest different
+ * things and can legitimately disagree: the content signature covers the
+ * record's own JSON, while the DWS seal covers the CAdES-signed PDF
+ * artifact. A record whose JSON is intact but whose signed PDF was swapped
+ * or deleted is a materially different situation from one where both hold.
+ */
+export interface EvidenceVerification {
+  finding_id: string;
+  valid: boolean;
+  content_signature: { valid: boolean; signature: string | null };
+  dws: {
+    present: boolean;
+    valid: boolean | null;
+    seal: string | null;
+    recomputed?: string;
+    bytes?: number;
+    reason: string | null;
+  };
+}
+
+export function verifyEvidence(findingId: string): Promise<EvidenceVerification> {
   return apiFetch(`/api/evidence/${encodeURIComponent(findingId)}/verify`);
+}
+
+/** URL of the real Evidence Report PDF - signed (CAdES, via Nutrient DWS)
+ * or the pre-signing render. Used directly as an embed/download src.
+ *
+ * `download` must be requested from the server: the HTML download attribute
+ * is ignored cross-origin, and the dashboard and API run on different
+ * ports, so only a Content-Disposition header actually forces a save.
+ */
+export function evidenceDocumentUrl(
+  findingId: string,
+  variant: "signed" | "unsigned" = "signed",
+  download = false
+): string {
+  const dl = download ? "&download=true" : "";
+  return `${API_BASE}/api/evidence/${encodeURIComponent(findingId)}/document?variant=${variant}${dl}`;
 }
 
 // ---------------------------------------------------------------------------
