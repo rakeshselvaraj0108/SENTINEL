@@ -32,7 +32,10 @@ export function SandboxVerificationPanel({ evidence, highlighted }: { evidence: 
           );
         })
       )}
-      <Link href="/verification-lab" className="mt-1 flex w-fit items-center gap-1 font-data text-[10px] text-amber hover:underline">
+      <Link
+        href={`/verification-lab?finding_id=${encodeURIComponent(evidence.finding_id)}`}
+        className="mt-1 flex w-fit items-center gap-1 font-data text-[10px] text-amber hover:underline"
+      >
         view in Verification Lab
         <IconArrowUpRight size={11} strokeWidth={1.5} />
       </Link>

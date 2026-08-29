@@ -37,7 +37,7 @@ export function LedgerEntryDetail({
       </div>
       {isSealed && (
         <Link
-          href="/evidence"
+          href={`/evidence?finding_id=${encodeURIComponent(entry.findingId)}`}
           className="mt-1 flex w-fit items-center gap-1 font-data text-[10px] text-amber hover:underline"
         >
           view {entry.findingId} Evidence Final Report

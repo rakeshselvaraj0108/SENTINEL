@@ -1,10 +1,12 @@
-import { IconFileTypePdf, IconLock } from "@tabler/icons-react";
+import Link from "next/link";
+import { IconFileTypePdf, IconLock, IconArrowUpRight } from "@tabler/icons-react";
 import clsx from "clsx";
 import { Panel } from "../Panel";
 import type { EvidenceDocSummary } from "@/lib/sentinel/api";
 
 interface EvidenceVaultPanelProps {
   evidenceDoc: EvidenceDocSummary | null;
+  findingId: string | null;
   loading?: boolean;
   error?: string | null;
 }
@@ -15,14 +17,22 @@ const reviewStyle: Record<EvidenceDocSummary["reviewStatus"], string> = {
   rejected: "border-danger/40 bg-danger/10 text-danger",
 };
 
-export function EvidenceVaultPanel({ evidenceDoc, loading, error }: EvidenceVaultPanelProps) {
+export function EvidenceVaultPanel({ evidenceDoc, findingId, loading, error }: EvidenceVaultPanelProps) {
   return (
     <Panel
       title="Evidence Vault"
       headerRight={
-        <span className="text-[10px] uppercase tracking-[0.06em] text-text-dim">
-          Nutrient DWS Sealed
-        </span>
+        evidenceDoc && findingId ? (
+          <Link
+            href={`/evidence?finding_id=${encodeURIComponent(findingId)}`}
+            className="flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] text-text-dim transition-colors hover:text-amber"
+          >
+            full report
+            <IconArrowUpRight size={10} strokeWidth={1.5} />
+          </Link>
+        ) : (
+          <span className="text-[10px] uppercase tracking-[0.06em] text-text-dim">Nutrient DWS Sealed</span>
+        )
       }
       bodyClassName="p-3"
     >

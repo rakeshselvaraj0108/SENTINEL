@@ -151,6 +151,20 @@ export function getHealth(): Promise<HealthState> {
   return apiFetch("/api/health");
 }
 
+export interface AlertRecord {
+  id: string;
+  ts: string;
+  severity: "critical" | "warning";
+  source: "model-armor" | "gateway" | "worker";
+  agent: string;
+  title: string;
+  detail: string;
+}
+
+export function getAlerts(limit = 100): Promise<{ alerts: AlertRecord[]; critical_count: number }> {
+  return apiFetch(`/api/alerts?limit=${limit}`);
+}
+
 export interface GatewayLogEntry {
   ts: string;
   agent: string;

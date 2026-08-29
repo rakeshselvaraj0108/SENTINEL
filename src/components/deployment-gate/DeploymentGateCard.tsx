@@ -170,7 +170,7 @@ export function DeploymentGateCard() {
                     : `Rejected by ${gate.decision?.actor}. Sent back to Patch Forge for revision.`}
                 </p>
                 <Link
-                  href={decision === "approved" ? "/evidence" : "/remediation"}
+                  href={`${decision === "approved" ? "/evidence" : "/remediation"}?finding_id=${encodeURIComponent(finding.finding_id)}`}
                   className="w-fit font-data text-[10.5px] text-amber hover:underline"
                 >
                   {decision === "approved"

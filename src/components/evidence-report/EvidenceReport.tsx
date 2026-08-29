@@ -57,7 +57,7 @@ function EvidenceReportInner() {
 
               <div className="flex flex-col gap-3">
                 <AuditTrailPanel evidence={evidence} selectedTarget={selectedTarget} onSelect={setSelectedTarget} />
-                <ExecutionTimelineLink />
+                <ExecutionTimelineLink findingId={evidence.finding_id} />
                 <CompleteSecurePanel evidence={evidence} highlighted={selectedTarget === "signoff"} />
                 <DwsViewerSlot
                   documentId={evidence.signature ?? "unsigned"}

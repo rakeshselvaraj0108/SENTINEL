@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   abortJob,
+  getAlerts,
   getDeploymentGate,
   getFindings,
   getFullEvidence,
@@ -17,6 +18,7 @@ import {
   postDecision,
   startInvestigation,
   SentinelApiError,
+  type AlertRecord,
   type CommandCenterState,
   type DeploymentGateState,
   type FullEvidenceObject,
@@ -114,6 +116,11 @@ export function useEvidenceList() {
 export function useHealth() {
   const { data, loading, error } = usePolledResource<HealthState>(getHealth, 8000);
   return { health: data, loading, error };
+}
+
+export function useAlerts() {
+  const { data, loading, error } = usePolledResource<{ alerts: AlertRecord[]; critical_count: number }>(getAlerts, 5000);
+  return { alerts: data?.alerts ?? [], criticalCount: data?.critical_count ?? 0, loading, error };
 }
 
 export function usePendingGateReviews() {

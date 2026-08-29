@@ -748,6 +748,62 @@ def get_health():
     }
 
 
+# --------------------------------------------------------------------------
+# Alerts - the real backing for Watchdog's registered capabilities
+# (read_agent_logs, raise_alert). Watchdog previously existed only as a
+# visual node on the agent graph and a registry row marked "in_review" -
+# these are the real signals an actual watchdog process would surface:
+# Model Armor blocks, Gateway policy blocks, and failed investigation jobs.
+# Nothing here is synthesized - every alert is derived from an event that
+# already happened and was already persisted somewhere else.
+# --------------------------------------------------------------------------
+
+
+@app.get("/api/alerts")
+def get_alerts(limit: int = 100):
+    alerts: list[dict] = []
+
+    for entry in model_armor.read_log(limit=limit):
+        if entry.get("severity") == "blocked":
+            alerts.append({
+                "id": f"armor:{entry['ts']}:{entry['agent']}",
+                "ts": entry["ts"],
+                "severity": "critical",
+                "source": "model-armor",
+                "agent": entry["agent"],
+                "title": "Prompt injection or unsafe content blocked",
+                "detail": entry["text"],
+            })
+
+    for entry in gateway.read_log(limit=limit):
+        if entry.get("decision") == "blocked":
+            alerts.append({
+                "id": f"gateway:{entry['ts']}:{entry['agent']}:{entry['action']}",
+                "ts": entry["ts"],
+                "severity": "warning",
+                "source": "gateway",
+                "agent": entry["agent"],
+                "title": f"Blocked: '{entry['agent']}' attempted '{entry['action']}'",
+                "detail": entry["reason"],
+            })
+
+    for job in get_queue().list_jobs(limit=limit):
+        if job.status == "failed":
+            finding_id = job.payload.get("finding_id", "unknown finding")
+            alerts.append({
+                "id": f"job:{job.job_id}",
+                "ts": job.updated_at,
+                "severity": "warning",
+                "source": "worker",
+                "agent": str(finding_id),
+                "title": f"Investigation failed for {finding_id}",
+                "detail": job.error or "unknown error",
+            })
+
+    alerts.sort(key=lambda a: a["ts"], reverse=True)
+    return {"alerts": alerts[:limit], "critical_count": sum(1 for a in alerts if a["severity"] == "critical")}
+
+
 if __name__ == "__main__":
     import uvicorn
 
