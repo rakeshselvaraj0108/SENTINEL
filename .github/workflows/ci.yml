@@ -57,6 +57,15 @@ jobs:
 
       - run: npm ci
 
+      # Next.js generates route/layout types (LayoutProps, PageProps and the
+      # rest) into .next/types during dev or build. A clean CI checkout has
+      # never run either, so tsc failed on `LayoutProps<"/">` in layout.tsx
+      # while passing locally, where a previous build had already emitted
+      # them. typegen produces exactly those definitions without paying for
+      # a full build first.
+      - name: Generate Next.js route types
+        run: npx next typegen
+
       - name: Typecheck
         run: npx tsc --noEmit
 
