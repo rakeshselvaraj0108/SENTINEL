@@ -98,7 +98,7 @@ npm run dev  # See /evidence page with real signatures
 ### Google: Fortified Enterprise Fleet
 | Requirement | Implementation | Status |
 |---|---|---|
-| **Gemini 3.5+ API** | Analyst + Patch Forge use Gemini 3.5 Flash (`config.GEMINI_MODEL`) | ✅ Real API calls |
+| **Gemini 3.5+ API** | Analyst + Patch Forge use Gemini 3.6 Flash (`config.GEMINI_MODEL`) | ✅ Real API calls |
 | **Agent Dev Kit** | Real SequentialAgent with 6 LlmAgents | ✅ Full orchestration |
 | **Agent Registry** | `app/governance/registry.py` + persistent JSON | ✅ Approval tracking |
 | **Agent Identity** | Least-privilege scopes per agent | ✅ Enforced by gateway |

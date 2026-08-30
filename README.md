@@ -32,7 +32,7 @@ flowchart TB
         MA["Model Armor<br/>prompt-injection · PII"]
     end
 
-    subgraph Fleet["Agent Fleet - Gemini 3.5 Flash"]
+    subgraph Fleet["Agent Fleet - Gemini 3.6 Flash"]
         H["1 Hunter<br/>real npm audit"]
         AN["2 Analyst<br/>reachability reasoning"]
         VL["3 Verification Lab<br/>sandboxed exploit"]
@@ -234,7 +234,7 @@ as **degraded** rather than silently returning fewer findings.
 | Variable | Default | Purpose |
 |---|---|---|
 | `GEMINI_API_KEY` | - | **Required.** Gemini API access |
-| `GEMINI_MODEL` | `gemini-3.5-flash` | Model for all agents |
+| `GEMINI_MODEL` | `gemini-3.6-flash` | Model for all agents (must stay Gemini 3.5+) |
 | `NUTRIENT_API_KEY` | - | Enables the CAdES-signed PDF seal |
 | `SENTINEL_ORCHESTRATOR` | `direct` | `direct` \| `adk` \| `strands` |
 | `SENTINEL_STORE_BACKEND` | `local` | `local` \| `firestore` \| `dynamodb` |

@@ -32,8 +32,13 @@ GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
 # the ADK fleet, the Strands orchestrator) resolves its model from here so
 # the version can never drift apart across call sites.
 #
-# Overridable via GEMINI_MODEL for A/B runs, but the default is the exact
-# model the rules name. gemini-3.7-flash exists and is newer, but was
-# returning 503 "high demand" under load, so it is not a safe default for a
-# live demo; it can be selected explicitly when it is healthy.
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
+# Default is gemini-3.6-flash rather than 3.5: quota on this project is
+# per-model, and gemini-3.5-flash was exhausted by real investigation runs
+# while 3.6 still had headroom on the same key. 3.6 is newer than 3.5, so
+# the requirement is satisfied either way - this is purely about which one
+# will actually answer during a demo.
+#
+# If 3.6 is ever exhausted too, set GEMINI_MODEL to any other Gemini 3.5+
+# model with capacity. Do NOT drop to 2.5: it answers, but it silently puts
+# the project out of compliance with the rules.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")

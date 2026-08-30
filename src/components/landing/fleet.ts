@@ -76,7 +76,7 @@ export const FLEET: FleetNode[] = [
     kind: "agent",
     responsibility: "Reasons about whether the flaw is reachable here",
     detail:
-      "Traces import paths and call sites with Gemini 3.5 Flash to form a reachability hypothesis. It proposes a verdict - it is never allowed to be the thing that confirms one.",
+      "Traces import paths and call sites with Gemini 3.6 Flash to form a reachability hypothesis. It proposes a verdict - it is never allowed to be the thing that confirms one.",
     scopes: ["repo:read", "memory:read"],
     tools: ["trace_reachability", "search_memory_bank", "gemini"],
     geometry: "octahedron",
