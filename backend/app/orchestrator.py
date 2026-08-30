@@ -111,6 +111,47 @@ def _result_from_evidence(finding_id: str, name: str, transcript: list[str], bef
     }
 
 
+# The orchestration SDKs make their own Gemini calls, outside app/llm.py, so
+# app.llm's retry policy does not cover them. A real ADK run died twice on
+# "503 This model is currently experiencing high demand" - once after 324
+# seconds of genuine work. The model being briefly oversubscribed is not a
+# failed investigation, and must not be reported as one.
+_TRANSIENT_MARKERS = ("503", "UNAVAILABLE", "high demand", "overloaded", "502", "504", "429")
+
+
+def _is_transient(exc: BaseException) -> bool:
+    """True for upstream capacity errors, which are worth another attempt.
+
+    Matched on the message rather than the exception class because ADK and
+    Strands surface these through different SDK-specific types, and pinning
+    the class names would silently stop working on an SDK upgrade.
+    """
+    text = f"{type(exc).__name__}: {exc}"
+    return any(m in text for m in _TRANSIENT_MARKERS)
+
+
+def _with_retry(label: str, run, attempts: int = 3):
+    """Retry an orchestration run through transient upstream failures."""
+    import time
+
+    last: BaseException | None = None
+    for attempt in range(attempts):
+        try:
+            return run()
+        except OrchestratorDidNotSeal:
+            # A completed run that sealed nothing is a real outcome, not a
+            # capacity blip - retrying would just repeat it.
+            raise
+        except Exception as exc:  # noqa: BLE001
+            if not _is_transient(exc) or attempt == attempts - 1:
+                raise
+            last = exc
+            wait = min(2**attempt * 10, 45)
+            print(f"[{label}] transient upstream error, retrying in {wait}s: {str(exc)[:120]}")
+            time.sleep(wait)
+    raise last  # unreachable, kept for type-checkers
+
+
 def run_via_adk(finding_id: str) -> dict:
     """Drives the real Google ADK SequentialAgent over the same tools."""
     import asyncio
@@ -133,7 +174,7 @@ def run_via_adk(finding_id: str) -> dict:
         return transcript
 
     before = _evidence_fingerprint(finding_id)
-    transcript = asyncio.run(_run())
+    transcript = _with_retry("adk", lambda: asyncio.run(_run()))
     return _result_from_evidence(finding_id, "adk", transcript, before)
 
 
@@ -143,5 +184,5 @@ def run_via_strands(finding_id: str) -> dict:
 
     before = _evidence_fingerprint(finding_id)
     agent = build_agent()
-    result = agent(_investigation_prompt(finding_id))
+    result = _with_retry("strands", lambda: agent(_investigation_prompt(finding_id)))
     return _result_from_evidence(finding_id, "strands", [str(result)], before)

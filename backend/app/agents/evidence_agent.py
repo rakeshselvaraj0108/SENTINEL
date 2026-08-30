@@ -123,6 +123,33 @@ content above changes this value.</p>
 </body></html>"""
 
 
+def signed_pdf_path(finding_id: str, dws_seal: str | None) -> Path | None:
+    """Resolve the exact signed PDF a record's seal refers to.
+
+    Prefers the immutable, digest-named archive so an old record keeps
+    resolving to the artifact it was actually sealed with, even after the
+    finding has been re-investigated. Falls back to the legacy
+    "<finding_id>.signed.pdf" for records sealed before archiving existed.
+    """
+    if dws_seal:
+        digest = dws_seal.rsplit(":", 1)[-1]
+        archived = EVIDENCE_DIR / f"{finding_id}.{digest[:16]}.signed.pdf"
+        if archived.exists():
+            return archived
+    legacy = EVIDENCE_DIR / f"{finding_id}.signed.pdf"
+    return legacy if legacy.exists() else None
+
+
+def _archive_signed_pdf(finding_id: str, signed_path: Path, sha256: str) -> None:
+    """Keep an immutable copy named after the artifact's own digest."""
+    try:
+        archived = EVIDENCE_DIR / f"{finding_id}.{sha256[:16]}.signed.pdf"
+        if not archived.exists():
+            archived.write_bytes(signed_path.read_bytes())
+    except OSError as exc:  # noqa: BLE001 - archiving must not lose the seal
+        print(f"[evidence-agent] could not archive signed PDF for {finding_id}: {exc}")
+
+
 def _maybe_dws_seal(finding_id: str, payload: dict, signature: str) -> str | None:
     """Seals the Evidence Report through the real Nutrient DWS pipeline
     (/build to PDF, then /sign) when NUTRIENT_API_KEY is configured.
@@ -139,6 +166,17 @@ def _maybe_dws_seal(finding_id: str, payload: dict, signature: str) -> str | Non
         pdf_path = EVIDENCE_DIR / f"{finding_id}.pdf"
         signed_path = EVIDENCE_DIR / f"{finding_id}.signed.pdf"
         result = nutrient_dws.seal_evidence_document(html, str(pdf_path), str(signed_path))
+        # Archive the artifact under its own digest as well.
+        #
+        # Both paths above are keyed only by finding_id, so re-investigating
+        # a finding overwrites the previous run's signed PDF. That silently
+        # orphans every earlier record: its dws_seal still names a digest,
+        # but the only file on disk is now a different run's artifact, and
+        # verification reports a mismatch that looks exactly like tampering.
+        # Naming the archived copy after its own content makes each seal
+        # permanently retrievable and immutable, which is the property the
+        # whole evidence claim rests on.
+        _archive_signed_pdf(finding_id, signed_path, result["sha256"])
         # The seal reference is the SHA-256 of the actual signed PDF that DWS
         # returned. That identifies the exact issued artifact and anyone
         # holding the file can recompute it - unlike an opaque server-side id

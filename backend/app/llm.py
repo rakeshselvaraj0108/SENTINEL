@@ -7,6 +7,7 @@ generation).
 from __future__ import annotations
 
 import json
+import random
 import time
 
 import requests
@@ -20,6 +21,21 @@ API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:gene
 
 class LLMError(RuntimeError):
     pass
+
+
+# 429 = rate limited, 5xx = Gemini overloaded or briefly unavailable.
+# All are transient; none of them mean the request itself was wrong.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def _backoff(attempt: int) -> float:
+    """Exponential backoff with jitter.
+
+    The jitter matters here: the six agents in a run can hit the same
+    overloaded model at once, and identical backoff makes them retry in
+    lockstep and collide again on every attempt.
+    """
+    return min(2**attempt * 5, 60) * (0.7 + random.random() * 0.6)
 
 
 def call_gemini(
@@ -44,17 +60,31 @@ def call_gemini(
     max_retries = 5
     resp = None
     for attempt in range(max_retries):
-        resp = requests.post(
-            API_URL,
-            params={"key": GEMINI_API_KEY},
-            json=payload,
-            timeout=timeout,
-        )
-        if resp.status_code != 429:
+        try:
+            resp = requests.post(
+                API_URL,
+                params={"key": GEMINI_API_KEY},
+                json=payload,
+                timeout=timeout,
+            )
+        except requests.RequestException as exc:
+            # A dropped connection mid-investigation is transient in exactly
+            # the same way a 503 is, and just as fatal if we give up on it.
+            if attempt == max_retries - 1:
+                raise LLMError(f"Gemini API unreachable after {max_retries} attempts: {exc}") from exc
+            time.sleep(_backoff(attempt))
+            continue
+
+        if resp.status_code not in RETRYABLE_STATUS:
             break
-        # real free-tier rate limiting - back off and retry rather than fail the whole agent run
-        wait_seconds = min(2 ** attempt * 5, 60)
-        time.sleep(wait_seconds)
+        if attempt == max_retries - 1:
+            break
+        # 429 is real free-tier rate limiting; 5xx is Gemini itself being
+        # overloaded or briefly unavailable. Both are transient, and both
+        # used to end an investigation that had already done 5 minutes of
+        # real work - a clone, an npm audit, a sandboxed exploit run - which
+        # is a terrible way to lose a demo. Back off and try again.
+        time.sleep(_backoff(attempt))
 
     assert resp is not None
     if resp.status_code != 200:

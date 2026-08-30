@@ -297,7 +297,7 @@ def verify_evidence(finding_id: str):
     """
     import hashlib
 
-    from app.agents.evidence_agent import EVIDENCE_DIR, verify_signature
+    from app.agents.evidence_agent import EVIDENCE_DIR, signed_pdf_path, verify_signature
 
     doc = get_store().get_evidence(finding_id)
     if doc is None:
@@ -306,10 +306,14 @@ def verify_evidence(finding_id: str):
     content_valid = verify_signature(doc)
 
     dws_seal = doc.get("dws_seal")
-    signed_pdf = EVIDENCE_DIR / f"{finding_id}.signed.pdf"
+    # Resolve the artifact *this record* was sealed with, not merely the
+    # newest file for this finding - otherwise re-investigating a finding
+    # makes every earlier record report a mismatch indistinguishable from
+    # real tampering.
+    signed_pdf = signed_pdf_path(finding_id, dws_seal)
     if not dws_seal:
         dws = {"present": False, "valid": None, "reason": "no DWS seal on this record"}
-    elif not signed_pdf.exists():
+    elif signed_pdf is None:
         dws = {"present": True, "valid": False, "reason": "signed PDF is missing from the evidence store"}
     else:
         actual = f"dws:sha256:{hashlib.sha256(signed_pdf.read_bytes()).hexdigest()}"
@@ -346,14 +350,21 @@ def get_evidence_document(finding_id: str, variant: str = "signed", download: bo
     """
     from fastapi.responses import FileResponse
 
-    from app.agents.evidence_agent import EVIDENCE_DIR
+    from app.agents.evidence_agent import EVIDENCE_DIR, signed_pdf_path
 
     if variant not in ("signed", "unsigned"):
         raise HTTPException(400, "variant must be 'signed' or 'unsigned'")
 
     suffix = ".signed.pdf" if variant == "signed" else ".pdf"
-    path = EVIDENCE_DIR / f"{finding_id}{suffix}"
-    if not path.exists():
+    if variant == "signed":
+        # Same resolver the verify endpoint uses, so the bytes a reader
+        # downloads are exactly the bytes that were checked against the seal.
+        doc = get_store().get_evidence(finding_id) or {}
+        path = signed_pdf_path(finding_id, doc.get("dws_seal"))
+    else:
+        candidate = EVIDENCE_DIR / f"{finding_id}{suffix}"
+        path = candidate if candidate.exists() else None
+    if path is None:
         raise HTTPException(
             404,
             f"No {variant} PDF for {finding_id}. PDFs are produced by the Nutrient DWS "

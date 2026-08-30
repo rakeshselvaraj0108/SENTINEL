@@ -91,3 +91,59 @@ def test_orchestrator_selection_falls_back_safely(monkeypatch):
     assert orchestrator.active_orchestrator() == "direct"
     monkeypatch.setenv("SENTINEL_ORCHESTRATOR", "ADK")
     assert orchestrator.active_orchestrator() == "adk"
+
+
+# --- transient upstream failures -----------------------------------------
+
+
+def test_transient_upstream_errors_are_retried(monkeypatch):
+    """A real ADK run died twice on "503 ... high demand", once after 324
+    seconds of genuine work. Capacity blips are not failed investigations."""
+    calls = {"n": 0}
+
+    def _flaky():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RuntimeError("503 UNAVAILABLE: This model is currently experiencing high demand")
+        return "ok"
+
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    assert orchestrator._with_retry("adk", _flaky) == "ok"
+    assert calls["n"] == 3
+
+
+def test_a_real_error_is_not_retried(monkeypatch):
+    """A malformed request will fail identically every time; retrying it
+    just burns minutes of a demo."""
+    calls = {"n": 0}
+
+    def _broken():
+        calls["n"] += 1
+        raise ValueError("400 invalid argument: bad schema")
+
+    with pytest.raises(ValueError):
+        orchestrator._with_retry("adk", _broken)
+    assert calls["n"] == 1
+
+
+def test_finishing_without_sealing_is_never_retried(monkeypatch):
+    """That is a completed run with a real (bad) outcome, not a blip."""
+    calls = {"n": 0}
+
+    def _no_seal():
+        calls["n"] += 1
+        raise orchestrator.OrchestratorDidNotSeal("nothing sealed")
+
+    with pytest.raises(orchestrator.OrchestratorDidNotSeal):
+        orchestrator._with_retry("adk", _no_seal)
+    assert calls["n"] == 1, "a real outcome must not be retried"
+
+
+def test_persistent_capacity_failure_eventually_surfaces(monkeypatch):
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    def _always_503():
+        raise RuntimeError("503 high demand")
+
+    with pytest.raises(RuntimeError, match="503"):
+        orchestrator._with_retry("adk", _always_503, attempts=2)
