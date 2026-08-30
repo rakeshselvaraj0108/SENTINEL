@@ -147,3 +147,69 @@ def test_edited_record_fails_content_signature(client, monkeypatch):
     body = client.get(f"/api/evidence/{FID}/verify").json()
     assert body["content_signature"]["valid"] is False
     assert body["valid"] is False
+
+
+# --- immutable signed-artifact archiving ---------------------------------
+
+
+def test_a_record_resolves_to_the_artifact_it_was_sealed_with(tmp_path, monkeypatch):
+    """Re-investigating a finding used to overwrite the previous run's
+    signed PDF, orphaning every earlier record: the seal still named a
+    digest, but the only file on disk was a different run's document, and
+    verification reported a mismatch indistinguishable from tampering."""
+    import hashlib
+
+    from app.agents import evidence_agent
+
+    monkeypatch.setattr(evidence_agent, "EVIDENCE_DIR", tmp_path)
+
+    old_bytes = b"%PDF-1.7 first run"
+    old_digest = hashlib.sha256(old_bytes).hexdigest()
+    (tmp_path / f"F-1.{old_digest[:16]}.signed.pdf").write_bytes(old_bytes)
+
+    # A later run clobbers the finding-keyed path with different content.
+    (tmp_path / "F-1.signed.pdf").write_bytes(b"%PDF-1.7 second run, different bytes")
+
+    resolved = evidence_agent.signed_pdf_path("F-1", f"dws:sha256:{old_digest}")
+    assert resolved is not None
+    assert resolved.read_bytes() == old_bytes, "must resolve to its own sealed artifact"
+
+
+def test_legacy_records_still_resolve(tmp_path, monkeypatch):
+    """Records sealed before archiving existed have no digest-named copy and
+    must keep working rather than 404ing."""
+    from app.agents import evidence_agent
+
+    monkeypatch.setattr(evidence_agent, "EVIDENCE_DIR", tmp_path)
+    (tmp_path / "F-2.signed.pdf").write_bytes(b"%PDF legacy")
+
+    resolved = evidence_agent.signed_pdf_path("F-2", "dws:sha256:" + "0" * 64)
+    assert resolved is not None and resolved.name == "F-2.signed.pdf"
+
+
+def test_missing_artifact_resolves_to_none(tmp_path, monkeypatch):
+    from app.agents import evidence_agent
+
+    monkeypatch.setattr(evidence_agent, "EVIDENCE_DIR", tmp_path)
+    assert evidence_agent.signed_pdf_path("F-3", "dws:sha256:abc") is None
+
+
+def test_archiving_is_idempotent_and_never_raises(tmp_path, monkeypatch):
+    """Archiving is a durability nicety; it must never be able to lose the
+    seal it is trying to protect."""
+    import hashlib
+
+    from app.agents import evidence_agent
+
+    monkeypatch.setattr(evidence_agent, "EVIDENCE_DIR", tmp_path)
+    src = tmp_path / "F-4.signed.pdf"
+    payload = b"%PDF archived"
+    src.write_bytes(payload)
+    digest = hashlib.sha256(payload).hexdigest()
+
+    evidence_agent._archive_signed_pdf("F-4", src, digest)
+    evidence_agent._archive_signed_pdf("F-4", src, digest)  # twice is fine
+    assert (tmp_path / f"F-4.{digest[:16]}.signed.pdf").read_bytes() == payload
+
+    # A vanished source must not blow up the sealing path.
+    evidence_agent._archive_signed_pdf("F-5", tmp_path / "does-not-exist.pdf", "deadbeef" * 8)

@@ -38,6 +38,32 @@ def _backoff(attempt: int) -> float:
     return min(2**attempt * 5, 60) * (0.7 + random.random() * 0.6)
 
 
+def _explain_failure(resp) -> str:
+    """Turn an API failure into something the operator can act on.
+
+    Quota exhaustion and transient overload both arrive as 429/503 and read
+    almost identically, but the responses are opposite: one needs a higher
+    tier or a wait for the window to reset, the other just needs another
+    attempt. During a timed demo, "Gemini API error 429" alone sends people
+    hunting through logs for a bug that is not in this codebase.
+    """
+    body = resp.text[:1000]
+    lowered = body.lower()
+    if resp.status_code == 429 and "quota" in lowered:
+        return (
+            f"Gemini quota exhausted for model '{MODEL}'. This is an account limit, not a "
+            "fault in the fleet - retrying will not clear it. Either wait for the quota "
+            "window to reset, enable billing on the API key, or set GEMINI_MODEL to another "
+            f"Gemini 3.5+ model with headroom. Raw response: {body}"
+        )
+    if resp.status_code in RETRYABLE_STATUS:
+        return (
+            f"Gemini is temporarily unavailable for '{MODEL}' (HTTP {resp.status_code}) after "
+            f"retrying. This is upstream capacity, not a fault in the fleet. Raw: {body}"
+        )
+    return f"Gemini API error {resp.status_code}: {body}"
+
+
 def call_gemini(
     prompt: str, response_schema: dict | None = None, temperature: float = 0.2, timeout: int = 150
 ) -> str:
@@ -88,7 +114,7 @@ def call_gemini(
 
     assert resp is not None
     if resp.status_code != 200:
-        raise LLMError(f"Gemini API error {resp.status_code}: {resp.text[:1000]}")
+        raise LLMError(_explain_failure(resp))
 
     data = resp.json()
     try:

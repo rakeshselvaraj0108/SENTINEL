@@ -96,3 +96,35 @@ def test_backoff_is_jittered(monkeypatch):
     lockstep, or they collide again on every attempt."""
     samples = {llm._backoff(2) for _ in range(20)}
     assert len(samples) > 1, "backoff must not be identical across callers"
+
+
+# --- distinguishing quota exhaustion from transient overload --------------
+
+
+def test_quota_exhaustion_is_named_as_an_account_limit(monkeypatch):
+    """Quota and overload both arrive as 4xx/5xx and read almost the same,
+    but the responses are opposite. During a timed demo, a bare "429" sends
+    people hunting for a bug that is not in this codebase."""
+    monkeypatch.setattr(
+        llm.requests,
+        "post",
+        lambda *a, **k: _Resp(429, text='{"error":{"message":"You exceeded your current quota"}}'),
+    )
+    with pytest.raises(llm.LLMError) as e:
+        llm.call_gemini("hi")
+    msg = str(e.value)
+    assert "quota exhausted" in msg
+    assert "retrying will not clear it" in msg
+    assert llm.MODEL in msg, "must name which model ran out"
+
+
+def test_persistent_overload_is_named_as_upstream_capacity(monkeypatch):
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _Resp(503, text="overloaded"))
+    with pytest.raises(llm.LLMError, match="temporarily unavailable"):
+        llm.call_gemini("hi")
+
+
+def test_an_ordinary_error_keeps_its_raw_shape(monkeypatch):
+    monkeypatch.setattr(llm.requests, "post", lambda *a, **k: _Resp(400, text="bad schema"))
+    with pytest.raises(llm.LLMError, match="Gemini API error 400"):
+        llm.call_gemini("hi")
