@@ -46,3 +46,6 @@ backend/__pycache__
 backend/**/__pycache__
 backend/workdir
 *.pyc
+
+# Google Cloud service account key - a real credential, never commit
+backend/gcp-key.json
