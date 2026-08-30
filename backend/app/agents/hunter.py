@@ -13,13 +13,16 @@ against OSV.dev, NVD, or GHSA. Three outcomes:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL
 from app.schemas import Finding, Severity
 from app.grounded_tools import lookup_vulnerability
+from app.knowledge import advisory_cache
 
 
 def ensure_repo_cloned(repo_dir: Path = DEMO_REPO_DIR, repo_url: str = DEMO_REPO_URL) -> Path:
@@ -113,14 +116,41 @@ class ScanStats:
     grounded: int = 0
     unresolved: int = 0
     errored: int = 0
+    from_cache: int = 0
 
     @property
     def degraded(self) -> bool:
         """True when lookups failed outright, so this scan under-reports."""
         return self.errored > 0
 
+    @property
+    def served_entirely_from_cache(self) -> bool:
+        """A scan can be complete and correct while never reaching OSV/NVD -
+        cached records are real records we genuinely retrieved earlier, so
+        this is not a degraded scan. It is still worth surfacing: if this is
+        True for a long stretch it means the live sources have not actually
+        been contacted, which is how an upstream outage hides in plain sight."""
+        return self.raw > 0 and self.from_cache == self.grounded and self.grounded > 0
+
 
 last_scan = ScanStats()
+
+# Small on purpose: OSV/NVD are free public APIs.
+_GROUNDING_CONCURRENCY = int(os.environ.get("SENTINEL_GROUNDING_CONCURRENCY", 8))
+
+
+def _resolve_one(finding: Finding) -> tuple[Finding, dict]:
+    """Resolve a single finding, preferring the cache. Kept separate so the
+    gate below can run these concurrently without duplicating the
+    cache-then-network logic."""
+    cached = advisory_cache.get(finding.advisory_id)
+    if cached is not None:
+        return finding, {**cached, "_cache_hit": True}
+    # Looked up as a module global (not captured at import) so tests that
+    # monkeypatch hunter.lookup_vulnerability still intercept it here.
+    result = lookup_vulnerability(finding.advisory_id)
+    advisory_cache.put(finding.advisory_id, result)  # no-ops on failure
+    return finding, result
 
 
 def _apply_grounding_gate(findings: list[Finding]) -> list[Finding]:
@@ -130,19 +160,38 @@ def _apply_grounding_gate(findings: list[Finding]) -> list[Finding]:
 
     Records the outcome in `last_scan` so a caller can distinguish "nothing
     was found" from "we could not reach OSV/NVD/GHSA to check".
+
+    Lookups run concurrently. They are independent, pure-IO, and each cost
+    ~0.85s against OSV, so doing 25 of them serially burned ~21s of wall
+    clock per scan for no reason. The pool is deliberately small - these are
+    free public APIs and hammering them with 25 simultaneous connections is
+    how you earn a rate limit - and results are re-ordered back to match the
+    input so the gate stays deterministic regardless of completion order.
     """
     global last_scan
     stats = ScanStats(raw=len(findings))
-    grounded: list[Finding] = []
 
+    resolvable = [f for f in findings if f.advisory_id]
     for finding in findings:
         if not finding.advisory_id:
             finding.grounding_status = "UNVERIFIED"
             stats.unresolved += 1
-            continue
 
-        lookup = lookup_vulnerability(finding.advisory_id)
+    outcomes: dict[str, dict] = {}
+    if resolvable:
+        workers = min(_GROUNDING_CONCURRENCY, len(resolvable))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="grounding") as pool:
+            for finding, result in pool.map(_resolve_one, resolvable):
+                outcomes[finding.finding_id] = result
+
+    grounded: list[Finding] = []
+    # Iterate the original list, not completion order, so two identical
+    # scans always produce an identically ordered result.
+    for finding in resolvable:
+        lookup = outcomes.get(finding.finding_id) or {}
         if lookup.get("resolved"):
+            if lookup.get("_cache_hit"):
+                stats.from_cache += 1
             finding.verified_advisory_record = lookup.get("record")
             finding.grounding_source = lookup.get("source")
             finding.grounding_status = "VERIFIED"

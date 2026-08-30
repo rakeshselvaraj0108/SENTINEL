@@ -42,7 +42,9 @@ from app.adk_app.tools import (  # noqa: E402
     verification_lab_run_scenario,
 )
 
-MODEL = "gemini-2.5-flash"
+from app.config import GEMINI_MODEL
+
+MODEL = GEMINI_MODEL
 
 hunter_agent = LlmAgent(
     name="hunter",

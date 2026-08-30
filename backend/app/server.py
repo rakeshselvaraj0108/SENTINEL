@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from app import auth, decisions, ledger, orchestrator
 from app.agents import hunter as hunter_module
+from app.knowledge import advisory_cache
 from app.agents.hunter import hunt
 from app.config import DEMO_REPO_DIR, DEMO_REPO_URL, GCP_PROJECT_ID
 from app.governance import gateway, identity, model_armor, registry
@@ -846,7 +847,13 @@ def get_health():
             "unresolved": scan.unresolved,
             "errored": scan.errored,
             "degraded": scan.degraded,
+            # A scan served wholly from cache is complete and correct, but it
+            # means the live knowledge sources were never contacted - which is
+            # how an upstream OSV/NVD outage would otherwise hide in plain sight.
+            "from_cache": scan.from_cache,
+            "served_entirely_from_cache": scan.served_entirely_from_cache,
         },
+        "advisory_cache": advisory_cache.stats(),
         "memory_bank": mem_health,
         "evidence_integrity_pct": round(integrity_pct, 1),
         "evidence_count": len(all_evidence),

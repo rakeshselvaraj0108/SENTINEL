@@ -1,8 +1,8 @@
-fastapi==0.115.6
+fastapi==0.141.1
 uvicorn[standard]==0.34.0
-pydantic==2.10.4
+pydantic==2.13.4
 python-dotenv==1.0.1
-requests==2.32.3
+requests==2.34.2
 
 # Agent orchestration frameworks (Google ADK, AWS Strands)
 google-adk==2.7.1

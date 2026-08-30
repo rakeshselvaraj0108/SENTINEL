@@ -43,40 +43,73 @@ function usePolledResource<T>(fetcher: () => Promise<T>, intervalMs = POLL_INTER
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const mounted = useRef(true);
-  const fetcherRef = useRef(fetcher);
 
-  const poll = useCallback(async () => {
-    try {
-      const next = await fetcherRef.current();
-      if (!mounted.current) return;
-      setData(next);
-      setError(null);
-    } catch (err) {
-      if (!mounted.current) return;
-      setError(err instanceof SentinelApiError ? err.message : "Failed to reach the agent engine.");
-    } finally {
-      if (mounted.current) setLoading(false);
-    }
-  }, []);
-
-  // Whenever the fetcher identity changes (e.g. a findingId resolved
-  // asynchronously after mount), re-poll immediately instead of waiting up
-  // to `intervalMs` for the next scheduled tick.
+  // One self-contained loop, restarted whenever the fetcher identity changes
+  // (e.g. a findingId that resolved asynchronously after mount) - which also
+  // gives an immediate re-poll instead of waiting out the interval.
+  //
+  // A self-scheduling timeout rather than setInterval, for three reasons
+  // that each showed up as real jank:
+  //
+  //  1. No overlap. A cold /api/findings scan can take far longer than its
+  //     own interval; setInterval would fire again mid-flight and stack
+  //     concurrent duplicates of the most expensive call in the system,
+  //     each one making the next slower.
+  //  2. Backoff. When the engine is unreachable, retrying every 2s just
+  //     produces a wall of identical failures.
+  //  3. Hidden tabs stop polling entirely and re-poll the moment the tab is
+  //     focused, so a backgrounded dashboard costs nothing and a returning
+  //     one is fresh immediately rather than up to `intervalMs` stale.
   useEffect(() => {
-    fetcherRef.current = fetcher;
-    const kickoff = setTimeout(poll, 0);
-    return () => clearTimeout(kickoff);
-  }, [fetcher, poll]);
+    let mounted = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let failures = 0;
+    let inFlight = false;
 
-  useEffect(() => {
-    mounted.current = true;
-    const id = setInterval(poll, intervalMs);
-    return () => {
-      mounted.current = false;
-      clearInterval(id);
+    const poll = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const next = await fetcher();
+        if (!mounted) return;
+        setData(next);
+        setError(null);
+        failures = 0;
+      } catch (err) {
+        if (!mounted) return;
+        failures += 1;
+        setError(err instanceof SentinelApiError ? err.message : "Failed to reach the agent engine.");
+      } finally {
+        inFlight = false;
+        if (mounted) setLoading(false);
+      }
     };
-  }, [poll, intervalMs]);
+
+    const tick = async () => {
+      await poll();
+      if (!mounted || document.hidden) return;
+      const delay = failures > 0 ? Math.min(intervalMs * 2 ** failures, 30_000) : intervalMs;
+      timer = setTimeout(tick, delay);
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (timer) clearTimeout(timer);
+      } else {
+        failures = 0; // a returning user should not inherit a long backoff
+        void tick();
+      }
+    };
+
+    const kickoff = setTimeout(tick, 0);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      mounted = false;
+      document.removeEventListener("visibilitychange", onVisibility);
+      clearTimeout(kickoff);
+      if (timer) clearTimeout(timer);
+    };
+  }, [fetcher, intervalMs]);
 
   return { data, loading, error };
 }
@@ -229,15 +262,37 @@ export function useCommandCenterState(findingId?: string | null): UseCommandCent
 
   useEffect(() => {
     mounted.current = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    // Same self-scheduling loop as usePolledResource: this is the 2s poll on
+    // the most-viewed page in the app, so a stacked request here is the one
+    // most likely to be felt. Waiting for each tick to finish before booking
+    // the next guarantees at most one investigation-state request in flight,
+    // and a hidden tab stops polling until it is focused again.
+    const tick = async () => {
+      await poll();
+      if (!mounted.current || document.hidden) return;
+      timer = setTimeout(tick, POLL_INTERVAL_MS);
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (timer) clearTimeout(timer);
+      } else {
+        void tick();
+      }
+    };
+
     // Fire the first fetch from a timer callback (not directly in the effect
     // body) so it goes through the same "external callback triggers
-    // setState" path as every subsequent interval tick.
-    const kickoff = setTimeout(poll, 0);
-    const id = setInterval(poll, POLL_INTERVAL_MS);
+    // setState" path as every subsequent tick.
+    const kickoff = setTimeout(tick, 0);
+    document.addEventListener("visibilitychange", onVisibility);
     return () => {
       mounted.current = false;
+      document.removeEventListener("visibilitychange", onVisibility);
       clearTimeout(kickoff);
-      clearInterval(id);
+      if (timer) clearTimeout(timer);
     };
   }, [poll]);
 

@@ -22,7 +22,7 @@ from app.agents.hunter import hunt
 from app.agents.patch_forge import generate_patch
 from app.agents.re_verifier import reverify
 from app.agents.verification_lab import run_scenario
-from app.config import DEMO_REPO_DIR
+from app.config import DEMO_REPO_DIR, GEMINI_MODEL
 from app.governance.gateway import enforce
 from app.observability import traced_agent
 from app.schemas import (
@@ -55,7 +55,7 @@ def hunter_scan(component_filter: str = "") -> dict:
     return {"count": len(findings), "findings": [f.model_dump(mode="json") for f in findings]}
 
 
-@traced_agent("analyst", model="gemini-2.5-flash")
+@traced_agent("analyst", model=GEMINI_MODEL)
 @enforce("analyst", "call_llm")
 def analyst_assess_relevance(finding_id: str) -> dict:
     """Runs the real Analyst agent: a regex-based reachability scan of the
@@ -79,7 +79,7 @@ def verification_lab_run_scenario(finding_id: str, branch: str) -> dict:
     return result.model_dump(mode="json")
 
 
-@traced_agent("patch-forge", model="gemini-2.5-flash")
+@traced_agent("patch-forge", model=GEMINI_MODEL)
 @enforce("patch-forge", "call_llm")
 @enforce("patch-forge", "create_branch")
 def patch_forge_generate_patch(finding_id: str, verification_feedback: str = "") -> dict:

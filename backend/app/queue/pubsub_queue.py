@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 
+from google.api_core import exceptions as gexc
 from google.cloud import pubsub_v1
 
 from app.config import GCP_PROJECT_ID
@@ -35,6 +36,36 @@ class PubSubQueue(JobQueue):
         self._topic_path = self._publisher.topic_path(GCP_PROJECT_ID, TOPIC_ID)
         self._sub_path = self._subscriber.subscription_path(GCP_PROJECT_ID, SUBSCRIPTION_ID)
         self._local = LocalQueue()  # status/result bookkeeping
+        self._ensure_topology()
+
+    def _ensure_topology(self) -> None:
+        """Create the topic and subscription if they are not there yet.
+
+        Without this, a fresh project publishes into the void: enqueue()
+        raises NotFound 404 and every investigation fails at submission,
+        with nothing in the UI explaining why. Pub/Sub creation is
+        idempotent-by-conflict rather than idempotent-by-default, so
+        AlreadyExists is the success path on every run after the first.
+
+        A PermissionDenied here is deliberately not fatal: a locked-down
+        service account may legitimately be allowed to publish to a topic
+        that platform tooling provisioned, but not to create one. In that
+        case the resources are presumed to exist and any genuine problem
+        surfaces on the publish itself.
+        """
+        try:
+            self._publisher.create_topic(request={"name": self._topic_path})
+        except gexc.AlreadyExists:
+            pass
+        except gexc.PermissionDenied:
+            return
+
+        try:
+            self._subscriber.create_subscription(
+                request={"name": self._sub_path, "topic": self._topic_path}
+            )
+        except (gexc.AlreadyExists, gexc.PermissionDenied):
+            pass
 
     def enqueue(self, job_type: str, payload: dict) -> Job:
         job = Job.new(job_type, payload)

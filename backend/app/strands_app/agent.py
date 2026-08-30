@@ -20,7 +20,7 @@ from __future__ import annotations
 from strands import Agent
 from strands.models.gemini import GeminiModel
 
-from app.config import GEMINI_API_KEY
+from app.config import GEMINI_API_KEY, GEMINI_MODEL
 from app.strands_app.tools import (
     analyst_assess_relevance,
     evidence_agent_seal_record,
@@ -50,7 +50,7 @@ inspectable artifact, not an LLM's opinion."""
 def build_agent() -> Agent:
     model = GeminiModel(
         client_args={"api_key": GEMINI_API_KEY},
-        model_id="gemini-2.5-flash",
+        model_id=GEMINI_MODEL,
     )
     return Agent(
         name="sentinel_fleet",

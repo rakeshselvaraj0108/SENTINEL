@@ -11,9 +11,10 @@ import time
 
 import requests
 
-from app.config import GEMINI_API_KEY
+from app.config import GEMINI_API_KEY, GEMINI_MODEL
 
-MODEL = "gemini-2.5-flash"
+# Re-exported so callers and traces can report the model actually used.
+MODEL = GEMINI_MODEL
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
 
