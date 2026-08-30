@@ -10,11 +10,34 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 WORKDIR = BACKEND_DIR / "workdir"
 WORKDIR.mkdir(exist_ok=True)
+
+# Load .env by absolute path rather than letting python-dotenv search up
+# from the current directory. Started from the repo root instead of
+# backend/, the search found nothing and the whole process came up silently
+# unconfigured - no Gemini key, no GCP project, store and queue quietly
+# falling back to the local filesystem backends. Nothing errored; it just
+# was not the system anyone thought they were running.
+load_dotenv(BACKEND_DIR / ".env")
+
+
+def _absolutise_credentials() -> None:
+    """Make a relative GOOGLE_APPLICATION_CREDENTIALS work from any cwd.
+
+    The Google client libraries resolve this path against the current
+    working directory, so the natural "gcp-key.json" in .env only works
+    when the process happens to start inside backend/.
+    """
+    creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    if creds and not Path(creds).is_absolute():
+        resolved = (BACKEND_DIR / creds).resolve()
+        if resolved.exists():
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(resolved)
+
+
+_absolutise_credentials()
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
