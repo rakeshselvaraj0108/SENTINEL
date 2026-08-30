@@ -38,7 +38,16 @@ _PII_PATTERNS = [
 @dataclass
 class ScanResult:
     clean: bool
-    severity: str  # "clean" | "blocked"
+    # "clean"   - nothing matched
+    # "flagged" - PII found; allowed through, but a human should see it
+    # "blocked" - injection attempt; never reaches the model
+    #
+    # `clean` and `severity` are deliberately separate: a flagged scan is
+    # still clean in the sense that matters to the caller (it proceeds),
+    # while remaining visibly different from one where nothing was found.
+    # Collapsing the two made PII detections render identically to
+    # untouched content, so nobody ever saw them.
+    severity: str  # "clean" | "flagged" | "blocked"
     findings: list[str]
 
 
@@ -72,7 +81,11 @@ def scan(content: str, *, source: str, agent: str = "unknown") -> ScanResult:
 
     for pattern in _INJECTION_PATTERNS:
         if pattern.search(content):
-            findings.append(f"prompt injection pattern matched in {source}: {pattern.pattern!r}")
+            # The pattern itself, not its repr: repr() doubles every
+            # backslash, so the UI rendered '\bexfiltrate\b' where the
+            # actual pattern is 'exfiltrate'. Quoted so the feed can
+            # still split the sentence from the pattern.
+            findings.append(f"prompt injection pattern matched in {source}: '{pattern.pattern}'")
 
     if findings:
         result = ScanResult(clean=False, severity="blocked", findings=findings)
@@ -86,6 +99,12 @@ def scan(content: str, *, source: str, agent: str = "unknown") -> ScanResult:
     if pii_hits:
         findings.append(f"PII pattern(s) detected in {source}: {', '.join(pii_hits)}")
 
-    result = ScanResult(clean=True, severity="clean", findings=findings)
+    # clean=True either way - PII does not block. Only the label differs, so
+    # the Governance feed can show a reviewer that something was found.
+    result = ScanResult(
+        clean=True,
+        severity="flagged" if pii_hits else "clean",
+        findings=findings,
+    )
     _log_event(agent, source, result)
     return result

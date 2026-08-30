@@ -211,8 +211,15 @@ export function getRegistry(): Promise<{ agents: RegistryEntry[] }> {
 export interface ModelArmorLogEntry {
   ts: string;
   agent: string;
+  /** The untrusted input that was scanned: a README, a commit message, a file. */
   source: string;
-  severity: "clean" | "blocked";
+  /**
+   * "blocked" stops the pipeline; "flagged" (PII) is allowed through but
+   * needs review; "clean" matched nothing. Records written before "flagged"
+   * existed carry "clean" with a PII finding in `text`, which the UI
+   * normalises rather than under-reporting.
+   */
+  severity: "clean" | "flagged" | "blocked";
   text: string;
 }
 
