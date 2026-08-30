@@ -26,13 +26,19 @@ jobs:
 
       - name: Install dependencies
         working-directory: backend
-        # The agent SDKs (ADK, Strands, chromadb, cloud clients) are heavy and
-        # not needed to exercise the security-critical logic under test, so CI
-        # installs only what the suite imports. Import-time breakage in the
+        # The heaviest SDKs (ADK, Strands, chromadb) are not needed to
+        # exercise the security-critical logic under test, so CI installs
+        # only what the suite actually imports. Import-time breakage in the
         # full set is caught by the `imports` job below.
+        #
+        # The Firestore and Pub/Sub clients ARE required: tests/test_cloud_backends.py
+        # mocks their behaviour but still imports the real modules, and the
+        # Pub/Sub topology test exists because a missing topic made every
+        # enqueue 404 on a fresh project. Skipping it in CI would leave that
+        # regression unguarded exactly where it matters.
         run: |
           python -m pip install --upgrade pip
-          pip install pytest httpx fastapi pydantic python-dotenv requests
+          pip install pytest httpx fastapi pydantic python-dotenv requests google-cloud-pubsub google-cloud-firestore
 
       - name: Run tests
         working-directory: backend
