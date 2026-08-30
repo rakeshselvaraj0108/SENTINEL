@@ -13,6 +13,8 @@ Run with:
 from __future__ import annotations
 
 import os
+import threading
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
@@ -30,7 +32,32 @@ from app.governance import gateway, identity, model_armor, registry
 from app.queue import get_queue
 from app.store import get_store
 
-app = FastAPI(title="SENTINEL Agent Engine API")
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    """Warm the findings cache in the background at startup.
+
+    A cold scan is a real git clone plus `npm audit` (~14s) plus advisory
+    grounding, and whoever loaded the dashboard first used to absorb all of
+    it as a single blocking request - on Cloud Run, potentially past the
+    request timeout on the very first hit after a cold start.
+
+    Doing it on a daemon thread means the API answers immediately and the
+    scan lands a few seconds later; the UI polls, so it fills in on its own.
+    Failures are deliberately swallowed: a warm-up is an optimisation, and
+    the normal on-demand path in _load_findings still runs (and still
+    reports errors properly) if this never completes.
+    """
+    def _warm() -> None:
+        try:
+            _load_findings()
+        except Exception as exc:  # noqa: BLE001 - never block startup on a scan
+            print(f"[startup] findings warm-up failed, will scan on demand: {exc}")
+
+    threading.Thread(target=_warm, name="findings-warmup", daemon=True).start()
+    yield
+
+
+app = FastAPI(title="SENTINEL Agent Engine API", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,

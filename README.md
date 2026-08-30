@@ -1,358 +1,248 @@
 # SENTINEL — Evidence-Driven Autonomous Security Verification Fleet
 
-A production-ready autonomous security-engineering fleet that **investigates, verifies, remedies, and proves** security findings in software repositories. Built to satisfy three international hackathon requirements: **Google All Things Agentic (Fortified Enterprise Fleet), AWS Agents for Humans (Professional Agents), and DevNetwork Nutrient DWS Challenge**.
+A fleet of autonomous agents that takes a raw dependency-scanner finding and
+carries it all the way to a cryptographically sealed, human-reviewable
+verdict — deciding for itself whether the vulnerability is actually
+exploitable in *this* codebase, proving it in a sandbox, writing the fix,
+re-testing it, and sealing the evidence.
 
-## The Pitch
-
-Security findings are claims. Claims need evidence. **SENTINEL closes the loop**: real vulnerability detection → real relevance verification → real sandbox exploitation testing → real patch generation → real re-verification → cryptographically signed proof.
-
-One codebase, three deployment paths:
-- **Google Cloud + Gemini + ADK**: Real Agent Development Kit orchestration, governance enforcement, OpenTelemetry observability, Pub/Sub async queue, Firestore state
-- **AWS + Strands Agents SDK**: Same core agents, different orchestration; EventBridge/SQS queue, DynamoDB state
-- **Nutrient DWS**: Real document processing API for security advisory extraction and digital signing
-
-**Everything runs TODAY** with zero cloud credentials (LocalQueue + LocalJsonStore backend). Activate GCP, AWS, or Nutrient by setting environment variables.
+**The problem it removes:** a scanner reports 25 "critical" vulnerabilities.
+A security engineer spends days determining that most of them are unreachable
+in this application and irrelevant. SENTINEL does that triage itself,
+autonomously, and produces the evidence trail that proves each conclusion.
 
 ---
 
-## Quick Start (Local, No Cloud Setup)
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Client["Next.js 16 Dashboard - 8 pages"]
+        UI["Command Center · Verification Lab · Remediation<br/>Evidence · Governance · Audit Ledger · Gate · Alerts"]
+    end
+
+    subgraph API["FastAPI - Cloud Run"]
+        REST["REST API<br/>bearer auth · findings cache · startup warm-up"]
+    end
+
+    subgraph Gov["Governance - enforced on every tool call"]
+        GW["Agent Gateway<br/>enforce() decorator"]
+        REG["Agent Registry<br/>approval + versioning"]
+        ID["Agent Identity<br/>least-privilege scopes"]
+        MA["Model Armor<br/>prompt-injection · PII"]
+    end
+
+    subgraph Fleet["Agent Fleet - Gemini 3.5 Flash"]
+        H["1 Hunter<br/>real npm audit"]
+        AN["2 Analyst<br/>reachability reasoning"]
+        VL["3 Verification Lab<br/>sandboxed exploit"]
+        PF["4 Patch Forge<br/>OWASP-grounded fix"]
+        RV["5 Re-Verifier<br/>re-runs the exploit"]
+        EV["6 Evidence Agent<br/>signs + seals"]
+    end
+
+    subgraph Know["Grounding - no finding without a real record"]
+        OSV["OSV.dev · NVD · GHSA · EPSS"]
+        CACHE["Advisory cache<br/>parallel, disk-backed"]
+        MEM["Memory Bank<br/>ChromaDB"]
+    end
+
+    subgraph Cloud["Google Cloud"]
+        PS["Pub/Sub<br/>async job queue"]
+        FS["Firestore<br/>evidence store"]
+        OT["OpenTelemetry<br/>GenAI conventions"]
+    end
+
+    DWS["Nutrient DWS<br/>CAdES-signed PDF"]
+
+    UI --> REST
+    REST --> GW
+    GW --> REG & ID & MA
+    GW --> Fleet
+    H --> AN --> VL --> PF --> RV --> EV
+    H <--> CACHE <--> OSV
+    AN <--> MEM
+    PF <--> MEM
+    REST <--> PS
+    EV --> FS
+    EV --> DWS
+    Fleet -.traces.-> OT
+```
+
+**Orchestration is swappable at runtime** via `SENTINEL_ORCHESTRATOR`:
+
+| Value | Path | Used for |
+|---|---|---|
+| `direct` (default) | deterministic Python pipeline | fastest, fully reproducible |
+| `adk` | **Google ADK** `SequentialAgent` over 6 real `LlmAgent`s | All Things Agentic |
+| `strands` | **AWS Strands** `Agent` with a Gemini model provider | Agents for Humans |
+
+All three drive the *same* tools in `app/agent_tools.py`, so the orchestrator
+changes how the fleet is coordinated without changing what it actually does.
+
+---
+
+## The two things that make this different
+
+**1. Verdicts are earned in a sandbox, not asserted by a model.**
+Analyst forms a reachability hypothesis, but Verification Lab then clones the
+repo into a real git worktree and *executes* an exploit attempt against it.
+A finding is only marked exploitable if the exploit actually worked. Patch
+Forge is likewise forbidden from improvising: if there is no OWASP-grounded
+remediation pattern for the CWE, it escalates to a human rather than
+inventing a fix.
+
+**2. Two independent seals that are allowed to disagree.**
+Every evidence record carries a SHA-256 content signature over its JSON *and*
+a Nutrient DWS CAdES-signed PDF digest. They cover different things, so they
+catch different tampering:
+
+| Scenario | Content signature | DWS seal |
+|---|---|---|
+| Record JSON edited | fails | passes |
+| Signed PDF swapped or edited | passes | fails |
+
+*Verified by flipping a single byte in a real signed PDF and watching exactly
+one of the two seals fail.* A single seal would have missed it.
+
+---
+
+## Quick Start (local, no cloud account needed)
+
+**Requirements:** Python 3.12+, Node 20+, and `git` + `npm` on `PATH`
+(Hunter shells out to both).
 
 ```bash
-# Install dependencies
+# 1. Backend
 cd backend
 python -m venv .venv
-source .venv/bin/activate  # or .\.venv\Scripts\activate on Windows
+source .venv/Scripts/activate      # Windows;  .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
+```
 
-# Run the dev server (Next.js frontend + mock API)
-cd ..
-npm run dev  # http://localhost:3000
+Create `backend/.env` (gitignored, never committed):
 
-# In another terminal: run the async worker
-cd backend
+```
+GEMINI_API_KEY=your-key-here
+NUTRIENT_API_KEY=your-key-here
+```
+
+`NUTRIENT_API_KEY` is optional and enables the CAdES-signed PDF seal.
+
+```bash
+# 2. Start the API - answers immediately, scan warms in the background
+python -m uvicorn app.server:app --port 8000
+
+# 3. Second terminal - the async worker
+cd backend && source .venv/Scripts/activate
 python -m app.worker
 
-# In a third terminal: enqueue a sample investigation job
-python -c "
-from app.queue import get_queue
-job = get_queue().enqueue('investigate_finding', {'finding_id': 'SENTINEL-F-GHSA-8cf7-32gw-wr33'})
-print(f'Enqueued job {job.job_id}')
-"
-
-# Watch the worker process the full 6-stage pipeline:
-# Hunter (real npm audit) → Analyst (real reachability) → Verifier (real sandbox)
-# → Patch Forge (real fix generation) → Re-Verifier (re-test) → Evidence Agent (sign)
+# 4. Third terminal - the dashboard
+npm install && npm run dev         # http://localhost:3000
 ```
+
+Open <http://localhost:3000>, pick a finding, and press **Start
+Investigation**. A full run takes roughly 10-15 minutes because every stage
+is real: a real clone, a real `npm audit`, real Gemini reasoning, and a real
+sandboxed exploit attempt.
 
 ---
 
-## Architecture: Six-Stage Autonomous Loop
+## Deploy to Google Cloud Run
 
-```
-GitHub / Manifest
-    ↓
-┌─────────────────────────────────────┐
-│ HUNTER (npm audit scanner)          │ Real vulnerability detection
-│ → findings.json (25 real GHSA IDs)  │
-└─────────────────────────────────────┘
-    ↓
-┌─────────────────────────────────────┐
-│ ANALYST (reachability + Gemini)     │ Real code relevance reasoning
-│ → verdict.json (confirmed/likely)   │
-└─────────────────────────────────────┘
-    ↓
-┌─────────────────────────────────────┐
-│ VERIFICATION LAB (git worktree)     │ Real sandbox exploitation test
-│ → result.json (CONFIRMED/RESOLVED)  │
-└─────────────────────────────────────┘
-    ↓
-┌─────────────────────────────────────┐
-│ PATCH FORGE (Gemini + git)          │ Real fix generation & commit
-│ → branch: sentinel/fix-ADVISORY     │
-└─────────────────────────────────────┘
-    ↓
-┌─────────────────────────────────────┐
-│ RE-VERIFIER (re-run sandbox)        │ Real re-verification
-│ → confirms fix worked (or iterates) │
-└─────────────────────────────────────┘
-    ↓
-┌─────────────────────────────────────┐
-│ EVIDENCE AGENT (sign & persist)     │ Cryptographic proof
-│ → evidence/{finding_id}.json (seal) │
-└─────────────────────────────────────┘
-    ↓
-DEPLOYMENT GATE (human decision)
-```
-
----
-
-## Running with Cloud Backends
-
-### Google Cloud (All Things Agentic)
+The backend ships as a container. `git` and Node are installed in the image
+because Hunter genuinely invokes them - a plain Python base image starts
+fine and then fails at the first scan.
 
 ```bash
-# Set up GCP credentials
-gcloud auth application-default login
-export GCP_PROJECT_ID="your-project-id"
+# One-time project setup
+gcloud services enable run.googleapis.com firestore.googleapis.com \
+    pubsub.googleapis.com artifactregistry.googleapis.com cloudbuild.googleapis.com
+gcloud artifacts repositories create sentinel --repository-format=docker --location=us-central1
+gcloud firestore databases create --location=nam5
 
-# Optional: run the ADK orchestration agent instead of the worker
-export SENTINEL_QUEUE_BACKEND=pubsub
-export SENTINEL_STORE_BACKEND=firestore
-python -m app.adk_app.agent
+# Secrets stay in Secret Manager - never in the image
+printf '%s' "$GEMINI_API_KEY"   | gcloud secrets create gemini-api-key   --data-file=-
+printf '%s' "$NUTRIENT_API_KEY" | gcloud secrets create nutrient-api-key --data-file=-
+
+# Build + deploy
+gcloud builds submit --config deploy/cloudbuild.yaml \
+    --substitutions=_REGION=us-central1,_SERVICE=sentinel-api
 ```
 
-**What activates:**
-- Pub/Sub for async job queue
-- Firestore for investigation state & evidence storage
-- OpenTelemetry exports to Cloud Trace
-- Agent observability with GenAI semantic conventions
+The deploy sets `SENTINEL_STORE_BACKEND=firestore` and
+`SENTINEL_QUEUE_BACKEND=pubsub`, which is what moves the evidence store and
+job queue off the local filesystem onto **Firestore** and **Pub/Sub**. The
+Pub/Sub topic and subscription are created automatically on first use.
 
-### AWS (Agents for Humans)
-
-```bash
-# Set up AWS credentials
-aws configure
-export SENTINEL_QUEUE_BACKEND=eventbridge
-export SENTINEL_SQS_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/..."
-export SENTINEL_STORE_BACKEND=dynamodb
-export SENTINEL_DYNAMODB_TABLE="sentinel_evidence"
-
-# Run the Strands Agents orchestration
-python -m app.strands_app.agent
-```
-
-**What activates:**
-- EventBridge for event publishing
-- SQS for job queue
-- DynamoDB for investigation state & evidence storage
-
-### Nutrient DWS (Document Processing)
+Run it locally exactly as Cloud Run does:
 
 ```bash
-# Sign up and get free API key
-# https://dashboard.nutrient.io/sign_up/
-export NUTRIENT_API_KEY="your_key_here"
-
-# Test the integration
-python -c "
-from app.integrations.nutrient_dws import is_configured
-print('Nutrient DWS configured:', is_configured())
-# Use: extract_document(pdf_path) or sign_evidence_report(pdf_path)
-"
+docker build -t sentinel-backend backend
+docker run -p 8080:8080 -e PORT=8080 -e GEMINI_API_KEY=... sentinel-backend
 ```
 
 ---
 
-## Project Structure
+## Enterprise controls (Fortified Enterprise Fleet)
 
-```
-SENTINEL/
-├── frontend (Next.js dashboard + 7 real pages)
-│   ├── src/app/
-│   │   ├── page.tsx                    (Command Center)
-│   │   ├── remediation/page.tsx        (Patch Forge UI)
-│   │   ├── evidence/page.tsx           (Evidence Final Report)
-│   │   ├── audit-ledger/page.tsx       (SHA-256 hash chain)
-│   │   ├── verification-lab/page.tsx   (Asset compliance scanning)
-│   │   ├── governance/page.tsx         (Agent Registry + Gateway)
-│   │   └── deployment-gate/page.tsx    (Human decision + PR link)
-│   └── src/lib/*-data.ts               (Real-time data from backend)
-│
-├── backend (Python agent engine)
-│   ├── app/
-│   │   ├── agents/                     (6 real agents)
-│   │   │   ├── hunter.py               (npm audit scanner)
-│   │   │   ├── analyst.py              (reachability + Gemini)
-│   │   │   ├── verification_lab.py     (sandbox isolation)
-│   │   │   ├── patch_forge.py          (fix generation)
-│   │   │   ├── re_verifier.py          (re-verification loop)
-│   │   │   └── evidence_agent.py       (signing + persistence)
-│   │   ├── adk_app/                    (Google ADK orchestration)
-│   │   ├── strands_app/                (AWS Strands orchestration)
-│   │   ├── governance/                 (Registry, Identity, Gateway, Model Armor)
-│   │   ├── queue/                      (LocalQueue, PubSubQueue, EventBridgeQueue)
-│   │   ├── store/                      (LocalJsonStore, FirestoreStore, DynamoDBStore)
-│   │   ├── worker.py                   (Async job processor)
-│   │   ├── observability.py            (OpenTelemetry + GenAI conventions)
-│   │   ├── memory.py                   (ChromaDB cross-session context)
-│   │   ├── integrations/               (Nutrient DWS client)
-│   │   ├── llm.py                      (Gemini API + exponential backoff)
-│   │   ├── schemas.py                  (Pydantic models)
-│   │   ├── config.py                   (Env var config)
-│   │   └── ...
-│   ├── requirements.txt                (All dependencies)
-│   ├── workdir/
-│   │   ├── evidence/                   (Signed evidence records)
-│   │   ├── queue/                      (File-based job queue)
-│   │   ├── memory_bank/                (ChromaDB vector store)
-│   │   ├── governance_registry.json    (Agent approval status)
-│   │   └── gateway_log.jsonl           (Tool call audit trail)
-│   └── ...
-└── README.md (you are here)
-```
-
----
-
-## How Each Hackathon Requirement is Satisfied
-
-### Google (All Things Agentic — Fortified Enterprise Fleet)
-
-| Requirement | SENTINEL Implementation | Status |
+| Pillar | Implementation | Evidence it is real |
 |---|---|---|
-| **Gemini 3.5+ via API** | Analyst + Patch Forge use Gemini 2.5 Flash | ✅ Real |
-| **Agent Framework (ADK)** | app/adk_app/agent.py: 6 real LlmAgents in SequentialAgent | ✅ Real |
-| **Google Cloud infra** | Cloud Run (dev server), Firestore (evidence), Pub/Sub (queue) | ✅ Ready |
-| **Agent Registry** | app/governance/registry.py: approval status, versioning | ✅ Real |
-| **Agent Runtime (async)** | Pub/Sub subscriber + worker.py processes jobs end-to-end | ✅ Real |
-| **Memory Bank** | ChromaDB stores/recalls prior Analyst verdicts | ✅ Real |
-| **Agent Identity** | app/governance/identity.py: least-privilege scopes per agent | ✅ Real |
-| **Agent Gateway** | app/governance/gateway.py: enforces Registry + Identity | ✅ Real |
-| **Model Armor** | app/governance/model_armor.py: blocks prompt injection & PII | ✅ Real |
-| **Agent Observability** | OpenTelemetry + GenAI semantic conventions (gen_ai.system, gen_ai.agent.name) | ✅ Real |
+| **Agent Registry** | `governance/registry.py` | Unregistered or unapproved agents are refused at the gateway |
+| **Agent Identity** | `governance/identity.py` | Per-agent scopes; Analyst cannot open a PR |
+| **Agent Gateway** | `governance/gateway.py` | `enforce()` wraps every tool call; appends to `gateway_log.jsonl` |
+| **Model Armor** | `governance/model_armor.py` | Blocks prompt injection and PII inline; `model_armor_log.jsonl` |
+| **Agent Runtime** | `queue/` + `worker.py` | Durable async jobs - close the laptop, come back later |
+| **Memory Bank** | `memory.py` (ChromaDB) | Prior verdicts and verified fixes recalled across sessions |
+| **Observability** | `observability.py` | OpenTelemetry spans using GenAI semantic conventions |
+| **Audit trail** | `ledger.py` | SHA-256 hash-chained; any edit breaks the chain |
 
-**Run ADK Orchestration:**
+Try it on the **Governance** page: submit `patch-forge: deploy to production`
+to the live policy simulator and watch the same code path the fleet runs
+through return `REQUIRES_HUMAN`.
+
+---
+
+## Tests
+
 ```bash
-export GCP_PROJECT_ID="your-project-id"
-gcloud auth application-default login
-python -m app.adk_app.agent
+cd backend && python -m pytest      # 131 tests
+npm run test                        # 23 tests
 ```
 
-### AWS (Agents for Humans — Professional Agents)
+These are security-invariant tests, not coverage padding. Each has been
+checked to genuinely fail when the property it protects is broken:
+disabling the production-deploy guard fails 31 of them, reverting the
+Pub/Sub provisioning fix fails the topology tests, and changing the frontend
+ledger delimiter fails the cross-language contract tests.
 
-| Requirement | SENTINEL Implementation | Status |
+---
+
+## No fabricated data
+
+Every number in the dashboard traces to something real: findings come from
+`npm audit` against a genuinely vulnerable repo (OWASP Juice Shop), advisory
+records from OSV/NVD/GHSA, exploitability from sandbox execution, and
+reasoning from live Gemini calls. There are no seeded fixtures behind the
+UI. When a knowledge source is unreachable the scan is explicitly reported
+as **degraded** rather than silently returning fewer findings.
+
+---
+
+## Configuration
+
+| Variable | Default | Purpose |
 |---|---|---|
-| **Agent built with Strands SDK** | app/strands_app/agent.py: real Strands Agent | ✅ Real |
-| **Professional / repetitive work** | Security finding triage & remediation (judgment-heavy, repetitive) | ✅ Real |
-| **Non-trivial implementation** | Full 6-stage pipeline with real sandbox testing | ✅ Real |
-| **Public repo, MIT/Apache** | GitHub repo public, ready for MIT licensing | ✅ Ready |
-| **Working demo video** | 7-page Next.js dashboard showing live agent outputs | ✅ Ready |
+| `GEMINI_API_KEY` | - | **Required.** Gemini API access |
+| `GEMINI_MODEL` | `gemini-3.5-flash` | Model for all agents |
+| `NUTRIENT_API_KEY` | - | Enables the CAdES-signed PDF seal |
+| `SENTINEL_ORCHESTRATOR` | `direct` | `direct` \| `adk` \| `strands` |
+| `SENTINEL_STORE_BACKEND` | `local` | `local` \| `firestore` \| `dynamodb` |
+| `SENTINEL_QUEUE_BACKEND` | `local` | `local` \| `pubsub` \| `eventbridge` |
+| `SENTINEL_API_TOKENS` | - | `principal:token,...` - enables auth |
+| `GCP_PROJECT_ID` | - | Required for Firestore and Pub/Sub |
+| `SENTINEL_GROUNDING_CONCURRENCY` | `8` | Parallel advisory lookups |
 
-**Run Strands Orchestration:**
-```bash
-aws configure
-export SENTINEL_SQS_QUEUE_URL="https://sqs.region.amazonaws.com/..."
-python -m app.strands_app.agent
-```
-
-### DevNetwork (Nutrient DWS Challenge)
-
-| Requirement | SENTINEL Implementation | Status |
-|---|---|---|
-| **DWS used meaningfully** | Data Extraction API: extract CVE/advisory PDFs → structured fields | ✅ Real |
-| **AI does heavy lifting** | Analyst agent (Gemini) classifies relevance; DWS handles uncertain cases | ✅ Real |
-| **Deterministic, auditable output** | Digital Signing API: cryptographic seal on Evidence Reports | ✅ Real |
-
-**Run with Nutrient:**
-```bash
-export NUTRIENT_API_KEY="your_free_key"
-python -c "from app.integrations.nutrient_dws import is_configured; print(is_configured())"
-```
-
----
-
-## Real Data: No Fabrication
-
-- **25 real findings** from OWASP Juice Shop (npm audit output)
-- **Real GHSA IDs** (e.g., GHSA-8cf7-32gw-wr33, GHSA-jf85-cpcp-j695)
-- **Real CVE data**: severity, CVSS scores, CWE arrays
-- **Real reachability**: regex-based import scanner finds actual code paths
-- **Real sandbox**: git worktree isolation, real package installs, real attack scenarios
-- **Real patch**: snippet-based code fixes, version bumps, generated tests
-- **Real signatures**: SHA-256 over canonical JSON, sigstore keyless signing
-
----
-
-## Governance & Security
-
-**Zero Trust Agent Architecture:**
-1. **Agent Registry**: Every agent must be approved before it runs
-2. **Agent Identity**: Each agent has least-privilege scopes (e.g., Hunter: read-only, Patch Forge: branch + commit only)
-3. **Agent Gateway**: Every tool call is checked against Registry + Identity before execution
-4. **Model Armor**: Untrusted repo content is scanned for prompt injection & PII before reaching the LLM
-
-**Audit Trail:** Every decision is logged (gateway_log.jsonl), persisted, and hash-chained for compliance.
-
----
-
-## Development
-
-**Install & Test:**
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# Run all modules import check
-python -c "
-from app.adk_app.agent import root_agent
-from app.strands_app.agent import build_agent
-from app.governance import registry, identity, gateway, model_armor
-from app.observability import traced_agent
-from app.memory import remember_verdict
-from app.queue import get_queue
-from app.store import get_store
-from app.integrations.nutrient_dws import is_configured
-from app.worker import run_investigation
-print('[OK] All modules import successfully')
-"
-```
-
-**Frontend:**
-```bash
-npm install
-npm run dev  # http://localhost:3000
-```
-
----
-
-## What's Deployed Right Now
-
-1. ✅ **Real backend**: Hunter, Analyst, Verification Lab, Patch Forge, Re-Verifier, Evidence Agent
-2. ✅ **Real frontend**: 7 pages wired to live backend data via next-gen data contracts
-3. ✅ **Real GitHub integration**: PR #1 opened on juice-shop fork with real patch
-4. ✅ **Real cloud infrastructure**: Ready to deploy to GCP/AWS/Nutrient with one env var change
-5. ✅ **Real governance**: Agent Registry, Identity, Gateway, Model Armor all enforced
-6. ✅ **Real async architecture**: LocalQueue works today; Pub/Sub/EventBridge activate with credentials
-
----
-
-## Next Steps (Optional, Cloud-Dependent)
-
-1. **GCP Project Setup** (for Fortified Enterprise Fleet submission):
-   ```bash
-   gcloud projects create sentinel-security-automation
-   gcloud auth application-default login
-   export GCP_PROJECT_ID="sentinel-security-automation"
-   # Enable Pub/Sub, Firestore, Cloud Run
-   ```
-
-2. **AWS Account Setup** (for Professional Agents submission):
-   ```bash
-   aws configure
-   # Create SQS queue, DynamoDB table, EventBridge rule
-   ```
-
-3. **Nutrient DWS API Key** (for Nutrient Challenge):
-   ```bash
-   # Free sign-up at https://dashboard.nutrient.io/sign_up/
-   export NUTRIENT_API_KEY="your_key_here"
-   ```
-
-4. **Deploy Frontend** to Cloud Run / Lambda / EC2
-5. **Open Real Pull Requests** to juice-shop repo (currently pushed to sentinel/fix-ghsa-8cf7-32gw-wr33)
-6. **Monitor Production** via OpenTelemetry traces + audit ledger
-
----
-
-## Central Line
-
-> We don't ask you to trust the agent. We ask the agent to produce evidence.
-
-Every claim — "this finding is real," "this patch works," "this evidence is tamper-proof" — is backed by reproducible, signed artifacts, not opinion. The entire system is built to be auditable by humans and certifiable for compliance.
-
----
-
-**License**: MIT (ready for submission)  
-**Commit**: `ca92f56` — "feat: build complete multi-cloud orchestration & governance layer"  
-**GitHub**: https://github.com/rakeshselvaraj0108/SENTINEL (public repo)
+> Without `SENTINEL_API_TOKENS`, mutating endpoints accept unauthenticated
+> calls and record the actor as `local-dev (unauthenticated)`. Set it before
+> exposing the API to anyone.
