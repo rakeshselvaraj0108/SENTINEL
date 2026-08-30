@@ -156,6 +156,29 @@ class StartInvestigationRequest(BaseModel):
 _investigation_lock = Lock()
 
 
+# An investigation legitimately runs for 10-15 minutes (real clone, real
+# npm audit, real sandboxed exploit, several Gemini calls), so this has to
+# be comfortably longer than a slow-but-healthy run or we would kill live
+# work. It only needs to be short enough that a dead worker's claim frees
+# up well within a demo.
+STALE_JOB_MINUTES = int(os.environ.get("SENTINEL_STALE_JOB_MINUTES", 45))
+
+
+def _is_stale(job) -> bool:
+    """True when a job claims to be running but has shown no progress for
+    longer than the lease, so whatever claimed it is presumed gone."""
+    if job.status not in ("queued", "running"):
+        return False
+    try:
+        updated = datetime.fromisoformat(job.updated_at)
+    except (TypeError, ValueError):
+        return False
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    age_minutes = (datetime.now(timezone.utc) - updated).total_seconds() / 60
+    return age_minutes > STALE_JOB_MINUTES
+
+
 @app.post("/api/investigations")
 def start_investigation(
     req: StartInvestigationRequest, principal: str = Depends(auth.require_principal)
@@ -177,8 +200,24 @@ def start_investigation(
             j for j in queue.list_jobs(limit=50)
             if j.payload.get("finding_id") == finding_id and j.status in ("queued", "running")
         ]
-        if existing:
-            return _job_to_dict(existing[0])
+        # Reclaim jobs whose worker died mid-run. A "running" job is only
+        # meaningful while some process is actually running it; when a
+        # worker is killed (a restart, a crashed Cloud Run instance) its
+        # claim is never released, and this dedup check would then keep
+        # handing that dead job back forever - wedging that finding so it
+        # can never be investigated again.
+        live = []
+        for job in existing:
+            if _is_stale(job):
+                queue.fail(
+                    job.job_id,
+                    f"Reclaimed: no progress for over {STALE_JOB_MINUTES} minutes, "
+                    "the worker holding this job is presumed dead.",
+                )
+            else:
+                live.append(job)
+        if live:
+            return _job_to_dict(live[0])
 
         job = queue.enqueue("investigate_finding", {"finding_id": finding_id})
         return _job_to_dict(job)
