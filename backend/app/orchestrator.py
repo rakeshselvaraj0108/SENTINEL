@@ -44,6 +44,73 @@ def _investigation_prompt(finding_id: str) -> str:
     )
 
 
+class OrchestratorDidNotSeal(RuntimeError):
+    """Raised when an LLM-driven orchestrator finished without producing a
+    new sealed evidence record.
+
+    This has to be a failure, not an empty success. The orchestrator is a
+    model deciding which tools to call, so it can perfectly well narrate a
+    complete investigation without ever calling evidence_agent_seal_record.
+    Marking that job "done" would put a confident, evidence-free summary in
+    front of a reviewer - the exact failure mode this whole product exists
+    to prevent.
+    """
+
+
+def _evidence_fingerprint(finding_id: str):
+    """Identity of the currently-sealed record, or None if there isn't one."""
+    from app.store import get_store
+
+    doc = get_store().get_evidence(finding_id)
+    if doc is None:
+        return None
+    # The signature is a SHA-256 over the record's content, so a genuinely
+    # new seal changes it. Falling back to the whole doc keeps this correct
+    # even for records written before signing existed.
+    return doc.get("signature") or doc
+
+
+def _result_from_evidence(finding_id: str, name: str, transcript: list[str], before) -> dict:
+    """Normalise an LLM-driven run onto the same contract the direct path
+    returns.
+
+    All three orchestrators bottom out in the same tools, so they must also
+    agree on the shape of what comes back - otherwise selecting `adk` (the
+    Google track's headline requirement) silently produces a result the UI
+    cannot read, and a finished investigation renders as nothing at all.
+    """
+    from app.store import get_store
+
+    doc = get_store().get_evidence(finding_id)
+    if doc is None:
+        raise OrchestratorDidNotSeal(
+            f"The {name} orchestrator finished without sealing an evidence record for "
+            f"{finding_id}. Nothing was written, so there is no verified result to show."
+        )
+    if before is not None and _evidence_fingerprint(finding_id) == before:
+        raise OrchestratorDidNotSeal(
+            f"The {name} orchestrator finished but the sealed record for {finding_id} is "
+            "unchanged from before this run - it did not seal anything new, and the "
+            "existing record belongs to an earlier investigation."
+        )
+
+    patch = doc.get("patch_proposal")
+    return {
+        "orchestrator": name,
+        # Kept so a reviewer can see how the model chose to drive the tools;
+        # the verified data below comes from the sealed record, never from
+        # the model's narration of it.
+        "transcript": transcript,
+        "verdict": doc.get("verdict"),
+        "patch": patch,
+        "reverify": {
+            "results": doc.get("verification_results") or [],
+            "final_patch_proposal": patch,
+        },
+        "evidence": doc,
+    }
+
+
 def run_via_adk(finding_id: str) -> dict:
     """Drives the real Google ADK SequentialAgent over the same tools."""
     import asyncio
@@ -65,14 +132,16 @@ def run_via_adk(finding_id: str) -> dict:
                     transcript.append(part.text)
         return transcript
 
+    before = _evidence_fingerprint(finding_id)
     transcript = asyncio.run(_run())
-    return {"orchestrator": "adk", "finding_id": finding_id, "transcript": transcript}
+    return _result_from_evidence(finding_id, "adk", transcript, before)
 
 
 def run_via_strands(finding_id: str) -> dict:
     """Drives the real AWS Strands Agent over the same tools."""
     from app.strands_app.agent import build_agent
 
+    before = _evidence_fingerprint(finding_id)
     agent = build_agent()
     result = agent(_investigation_prompt(finding_id))
-    return {"orchestrator": "strands", "finding_id": finding_id, "transcript": [str(result)]}
+    return _result_from_evidence(finding_id, "strands", [str(result)], before)

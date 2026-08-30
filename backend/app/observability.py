@@ -3,15 +3,16 @@ semantic conventions (gen_ai.system, gen_ai.request.model, gen_ai.agent.name)
 that are the direct mechanism behind Google's "OpenTelemetry-compliant audit
 logs" / Agent Observability requirement.
 
-Exports to the console by default (works today, zero cloud dependency).
-Swapping the exporter for an OTLP exporter pointed at Cloud Trace or AWS
-X-Ray is a one-line config change once real cloud credentials exist - the
-spans themselves, and every call site that creates one, stay identical.
+Exports to the console by default (works today, zero cloud dependency)
+and additionally over OTLP when OTEL_EXPORTER_OTLP_ENDPOINT is set, so the
+same spans reach a real collector - Cloud Trace, X-Ray, or anything else
+speaking OTLP - without a single call site changing.
 """
 
 from __future__ import annotations
 
 import functools
+import os
 from typing import Callable, TypeVar
 
 from opentelemetry import trace
@@ -19,8 +20,45 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 
-_provider = TracerProvider(resource=Resource.create({"service.name": "sentinel-agent-fleet"}))
+_resource = Resource.create(
+    {
+        "service.name": "sentinel-agent-fleet",
+        "service.namespace": "sentinel",
+    }
+)
+_provider = TracerProvider(resource=_resource)
+
+# Console is always on: it is what makes the traces visible in a demo with
+# no collector running, and it costs nothing.
 _provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
+
+
+def _attach_otlp_exporter(provider: TracerProvider) -> str | None:
+    """Additionally export over OTLP when an endpoint is configured.
+
+    Deliberately opt-in via OTEL_EXPORTER_OTLP_ENDPOINT rather than always
+    on: with no collector listening, the exporter retries in the background
+    and floods the logs with connection errors, which in a live demo looks
+    exactly like the agent fleet failing.
+
+    Failure to attach is never fatal - losing telemetry must not take the
+    fleet down with it.
+    """
+    endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if not endpoint:
+        return None
+    try:
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+        provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint)))
+        return endpoint
+    except Exception as exc:  # noqa: BLE001 - telemetry is never load-bearing
+        print(f"[observability] OTLP exporter not attached ({exc}); console tracing continues.")
+        return None
+
+
+OTLP_ENDPOINT = _attach_otlp_exporter(_provider)
+
 trace.set_tracer_provider(_provider)
 
 tracer = trace.get_tracer("sentinel.agents")
