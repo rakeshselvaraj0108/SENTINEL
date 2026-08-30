@@ -17,8 +17,8 @@ autonomously, and produces the evidence trail that proves each conclusion.
 
 ```mermaid
 flowchart TB
-    subgraph Client["Next.js 16 Dashboard - 8 pages"]
-        UI["Command Center · Verification Lab · Remediation<br/>Evidence · Governance · Audit Ledger · Gate · Alerts"]
+    subgraph Client["Next.js 16 Dashboard - landing + 8 app pages"]
+        UI["3D Landing · Command Center · Verification Lab<br/>Remediation · Evidence · Governance · Ledger · Gate · Alerts"]
     end
 
     subgraph API["FastAPI - Cloud Run"]
@@ -141,10 +141,14 @@ python -m app.worker
 npm install && npm run dev         # http://localhost:3000
 ```
 
-Open <http://localhost:3000>, pick a finding, and press **Start
-Investigation**. A full run takes roughly 10-15 minutes because every stage
-is real: a real clone, a real `npm audit`, real Gemini reasoning, and a real
-sandboxed exploit attempt.
+Open <http://localhost:3000>. That is the landing page - a live 3D view of
+the agent fleet with a finding pulsing through the real pipeline order.
+Press **Get started** to enter the Command Center at `/command-center`,
+pick a finding, and press **Start Investigation**.
+
+A full run takes roughly 10-15 minutes because every stage is real: a real
+clone, a real `npm audit`, real Gemini reasoning, and a real sandboxed
+exploit attempt.
 
 ---
 
