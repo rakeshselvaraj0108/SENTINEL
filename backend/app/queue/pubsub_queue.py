@@ -17,6 +17,13 @@ from app.config import GCP_PROJECT_ID
 from app.queue.base import Job, JobQueue
 from app.queue.local_queue import LocalQueue
 
+# Topologies already provisioned in this process, keyed by topic path.
+# Creation is idempotent but not free: each attempt is a network round trip
+# that comes back AlreadyExists, and get_queue() is called on nearly every
+# request. Doing it once per process turned /api/state from 7s into
+# something interactive.
+_provisioned: set[str] = set()
+
 TOPIC_ID = "sentinel-investigations"
 SUBSCRIPTION_ID = "sentinel-investigations-worker"
 
@@ -53,11 +60,15 @@ class PubSubQueue(JobQueue):
         case the resources are presumed to exist and any genuine problem
         surfaces on the publish itself.
         """
+        if self._topic_path in _provisioned:
+            return
+
         try:
             self._publisher.create_topic(request={"name": self._topic_path})
         except gexc.AlreadyExists:
             pass
         except gexc.PermissionDenied:
+            _provisioned.add(self._topic_path)
             return
 
         try:
@@ -66,6 +77,8 @@ class PubSubQueue(JobQueue):
             )
         except (gexc.AlreadyExists, gexc.PermissionDenied):
             pass
+
+        _provisioned.add(self._topic_path)
 
     def enqueue(self, job_type: str, payload: dict) -> Job:
         job = Job.new(job_type, payload)

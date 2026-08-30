@@ -17,22 +17,47 @@ code (worker.py) never needs to know which one is active.
 from __future__ import annotations
 
 import os
+import threading
 
 from app.queue.base import Job, JobQueue
 from app.queue.local_queue import LocalQueue
 
 
+# Cached per backend. The cloud queues hold gRPC channels that are
+# expensive to build and are designed to be long-lived; get_queue() is
+# called on nearly every request, so constructing a fresh client each time
+# meant a new connection (and, for Pub/Sub, a topology check) per call.
+_lock = threading.Lock()
+_instances: dict[str, JobQueue] = {}
+
+
 def get_queue() -> JobQueue:
     backend = os.environ.get("SENTINEL_QUEUE_BACKEND", "local").lower()
-    if backend == "pubsub":
-        from app.queue.pubsub_queue import PubSubQueue
+    with _lock:
+        cached = _instances.get(backend)
+        if cached is not None:
+            return cached
 
-        return PubSubQueue()
-    if backend == "eventbridge":
-        from app.queue.eventbridge_queue import EventBridgeQueue
+        if backend == "pubsub":
+            from app.queue.pubsub_queue import PubSubQueue
 
-        return EventBridgeQueue()
-    return LocalQueue()
+            queue: JobQueue = PubSubQueue()
+        elif backend == "eventbridge":
+            from app.queue.eventbridge_queue import EventBridgeQueue
+
+            queue = EventBridgeQueue()
+        else:
+            queue = LocalQueue()
+
+        _instances[backend] = queue
+        return queue
 
 
-__all__ = ["Job", "JobQueue", "get_queue"]
+def reset_queue_cache() -> None:
+    """Drop cached clients. For tests, and for any code that changes the
+    backend environment variable at runtime."""
+    with _lock:
+        _instances.clear()
+
+
+__all__ = ["Job", "JobQueue", "get_queue", "reset_queue_cache"]

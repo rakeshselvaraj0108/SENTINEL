@@ -21,7 +21,12 @@ function EvidenceReportInner() {
   const queryFindingId = searchParams.get("finding_id");
   // Falls back to whichever evidence was sealed most recently, so this page
   // has something to show without requiring the URL param on first visit.
-  const { evidence: evidenceList } = useEvidenceList();
+  // The list's error matters as much as its data. When the engine is down
+  // the list comes back empty, findingId falls to null, and the detail
+  // fetch then resolves to null without ever erroring - so the page would
+  // report "no evidence sealed yet", which is a confident factual claim
+  // about data it never actually received.
+  const { evidence: evidenceList, error: listError } = useEvidenceList();
   const findingId = queryFindingId ?? evidenceList[evidenceList.length - 1]?.finding_id ?? null;
 
   const { evidence, loading, error } = useFullEvidence(findingId);
@@ -36,8 +41,10 @@ function EvidenceReportInner() {
           <EvidenceHeader evidence={evidence} findingId={findingId} />
           {loading && !evidence ? (
             <div className="flex flex-1 items-center justify-center text-[12px] text-text-dim">connecting to agent engine…</div>
-          ) : error && !evidence ? (
-            <div className="flex flex-1 items-center justify-center text-[12px] text-danger">{error}</div>
+          ) : (error || listError) && !evidence ? (
+            <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-danger">
+              {error ?? listError}
+            </div>
           ) : !evidence ? (
             <div className="flex flex-1 items-center justify-center text-[12px] text-text-dim">
               No evidence sealed yet. Start and complete an investigation from the Command Center first.
