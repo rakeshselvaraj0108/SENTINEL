@@ -49,3 +49,8 @@ backend/workdir
 
 # Google Cloud service account key - a real credential, never commit
 backend/gcp-key.json
+
+# Firebase
+.firebase/
+firebase-debug.log
+out/
