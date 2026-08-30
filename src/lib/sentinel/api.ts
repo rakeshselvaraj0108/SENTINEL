@@ -146,6 +146,18 @@ export function getSystemInfo(): Promise<SystemInfo> {
 }
 
 export interface HealthState {
+  /** Grounding-gate outcome for the last scan. `degraded` means lookups
+   *  failed outright, so the result under-reports rather than being empty. */
+  scan?: {
+    raw: number;
+    grounded: number;
+    unresolved: number;
+    errored: number;
+    degraded: boolean;
+    from_cache: number;
+    served_entirely_from_cache: boolean;
+  };
+  advisory_cache?: { entries: number; path: string; ttl_seconds: number };
   memory_bank: { healthy: boolean; collections: Record<string, number>; error?: string };
   evidence_integrity_pct: number;
   evidence_count: number;

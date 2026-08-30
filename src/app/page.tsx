@@ -1,11 +1,12 @@
 import { Metadata } from "next";
-import { CommandCenter } from "@/components/command-center/CommandCenter";
+import { LandingPage } from "@/components/landing/LandingPage";
 
 export const metadata: Metadata = {
-  title: "SENTINEL — Command Center",
-  description: "Real-time autonomous security investigation dashboard",
+  title: "SENTINEL — Evidence-driven autonomous security verification",
+  description:
+    "Six agents take a scanner finding, decide whether it is genuinely exploitable in your codebase, prove it in a sandbox, write the fix, re-test it, and seal the evidence.",
 };
 
 export default function Home() {
-  return <CommandCenter />;
+  return <LandingPage />;
 }

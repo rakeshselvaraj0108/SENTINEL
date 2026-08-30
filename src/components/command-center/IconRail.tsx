@@ -16,7 +16,7 @@ import {
 import { useAlerts } from "@/lib/sentinel/hooks";
 
 const navItems = [
-  { href: "/", icon: IconLayoutDashboard, label: "Command Center" },
+  { href: "/command-center", icon: IconLayoutDashboard, label: "Command Center" },
   { href: "/verification-lab", icon: IconFlask2, label: "Verification Lab" },
   { href: "/remediation", icon: IconGitPullRequest, label: "Remediation" },
   { href: "/evidence", icon: IconFileCheck, label: "Evidence Report" },
