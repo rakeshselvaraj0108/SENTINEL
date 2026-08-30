@@ -107,8 +107,15 @@ export function DwsViewerSlot({
         <div className="flex h-28 items-center justify-center border border-dashed border-border-soft bg-black/20 px-3">
           <div className="flex flex-col items-center gap-1.5 text-center text-text-dim">
             <IconFileTypePdf size={22} strokeWidth={1.2} />
+            {/* Deliberately does not blame a missing key. Sealing also
+                fails when the key is present but the DWS account is out of
+                credits (HTTP 402), and telling someone to set a variable
+                they already set sends them debugging the wrong thing. */}
             <span className="font-data text-[8.5px] leading-snug">
-              SHA-256 content signature only — set NUTRIENT_API_KEY to also seal via Nutrient DWS
+              SHA-256 content signature only — no Nutrient DWS seal on this record
+            </span>
+            <span className="font-data text-[8px] leading-snug text-text-dim/70">
+              DWS sealing needs NUTRIENT_API_KEY set and credits available
             </span>
           </div>
         </div>

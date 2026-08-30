@@ -202,3 +202,57 @@ def test_no_seal_when_unconfigured(no_key):
     from app.agents import evidence_agent
 
     assert evidence_agent._maybe_dws_seal("F-1", {"finding_id": "F-1", "timeline": []}, "sha256:x") is None
+
+
+# --- running out of DWS credits ------------------------------------------
+
+
+def test_sign_reports_credit_exhaustion_clearly(monkeypatch):
+    """DWS /sign returns 402 when the account is out of credits. It reads
+    nothing like an auth failure, and confusing the two sends someone
+    rotating a perfectly good API key during a demo."""
+    from app.integrations import nutrient_dws
+
+    class _R:
+        status_code = 402
+        content = b""
+        text = (
+            '{"error":{"details":"operation failed because 10 required credits are not '
+            'available","status":402}}'
+        )
+
+    monkeypatch.setattr(nutrient_dws.requests, "post", lambda *a, **k: _R())
+    monkeypatch.setattr(nutrient_dws, "_api_key", lambda: "test-key")
+
+    import tempfile, os
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        f.write(b"%PDF-1.7 test")
+        src = f.name
+    try:
+        with pytest.raises(nutrient_dws.NutrientDWSError) as e:
+            nutrient_dws.sign_evidence_report(src, src + ".signed")
+        assert "402" in str(e.value)
+        assert "credits" in str(e.value)
+    finally:
+        os.unlink(src)
+
+
+def test_a_seal_failure_never_fabricates_a_seal(monkeypatch, tmp_path):
+    """The record must still be produced, signed with SHA-256, and must not
+    claim a DWS seal that was never issued. Losing the evidence because the
+    optional seal failed would be far worse than having no seal."""
+    from app.agents import evidence_agent
+
+    monkeypatch.setattr(evidence_agent, "EVIDENCE_DIR", tmp_path)
+    monkeypatch.setattr(evidence_agent.nutrient_dws, "is_configured", lambda: True)
+
+    def _boom(*_a, **_k):
+        raise evidence_agent.nutrient_dws.NutrientDWSError(
+            "Nutrient DWS /sign error 402: required credits aren't available"
+        )
+
+    monkeypatch.setattr(evidence_agent.nutrient_dws, "seal_evidence_document", _boom)
+
+    seal = evidence_agent._maybe_dws_seal("F-402", {"finding_id": "F-402"}, "sha256:abc")
+    assert seal is None, "a failed seal must be absent, never fabricated"
