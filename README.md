@@ -24,13 +24,17 @@ rejected after it, and the resulting sealed evidence record.*
 
 </div>
 
-> **Deployment status.** The backend runs against live **Cloud Firestore** and
-> **Cloud Pub/Sub**. It is **not deployed to Cloud Run** — that requires a
-> billing account this project does not have. The container image builds and
-> has been verified serving on an injected `$PORT`, and `deploy/deploy.sh`
-> performs the whole deploy in one command once billing exists. There is
-> therefore **no public demo URL**, and every screenshot here is from a local
-> build of the committed code. See [Roadmap](#16-roadmap).
+> **Deployment status.** **[Live dashboard →](https://algebraic-pier-465415-a6.web.app)**,
+> on Firebase Hosting (Google Cloud, no billing account required). It is a
+> static build serving a real, complete captured investigation rather than
+> a live backend — a banner on every page says so, and every action that
+> would change state explains why it's disabled instead of pretending to
+> work. The backend itself runs against live **Cloud Firestore** and
+> **Cloud Pub/Sub**; it is **not deployed to Cloud Run**, which requires a
+> billing account this project does not have. The container image builds
+> and has been verified serving on an injected `$PORT`, and
+> `deploy/deploy.sh` performs the whole Cloud Run deploy in one command
+> once billing exists. See [Roadmap](#16-roadmap).
 
 ---
 
@@ -754,8 +758,9 @@ SENTINEL/
 
 ## 11. Demo walkthrough
 
-Screenshots are from a local build of the committed code; there is no public
-deployment yet.
+**[Try it live →](https://algebraic-pier-465415-a6.web.app)** — a static
+snapshot of one real, complete investigation. Screenshots below are from a
+local build of the same committed code.
 
 ### 1. Landing — the fleet as a navigable scene
 
@@ -925,7 +930,12 @@ Stated plainly, because they bound how far the results can be trusted.
   per-process. Horizontal scaling would require moving both to shared storage.
 - **DWS seal availability.** The CAdES seal requires DWS credits. Without
   them, records carry only the SHA-256 content signature.
-- **Not deployed publicly.** There is no hosted instance; see below.
+- **The hosted instance is a static snapshot, not a live backend.**
+  [algebraic-pier-465415-a6.web.app](https://algebraic-pier-465415-a6.web.app)
+  serves a real, complete captured investigation with no engine behind it —
+  every action that would change state is disabled and says why. The live
+  engine only exists where you run it: locally, or against Cloud Run once
+  billing is enabled.
 
 ---
 
@@ -936,8 +946,7 @@ as though it exists.
 
 | Item | Status | Blocker |
 |---|---|---|
-| Cloud Run deployment | Image builds and runs; `deploy/deploy.sh` written and preflight-tested | Requires a billing account |
-| Public demo URL | — | Depends on Cloud Run |
+| Cloud Run deployment (live backend, not a snapshot) | Image builds and runs; `deploy/deploy.sh` written and preflight-tested | Requires a billing account |
 | Demo video | — | To be recorded |
 | Cloud Run Jobs for sandboxed verification | Verification currently runs in-process on the worker | Depends on Cloud Run |
 | Secret Manager bindings | Configured in `deploy/cloudbuild.yaml` | Depends on Cloud Run |
