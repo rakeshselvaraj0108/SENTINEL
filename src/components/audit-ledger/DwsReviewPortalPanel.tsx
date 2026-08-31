@@ -50,6 +50,7 @@ export function DwsReviewPortalPanel() {
               </div>
               {task.sealed && <IconLock size={11} strokeWidth={1.5} className="shrink-0 text-text-dim" />}
               <Link
+                prefetch={false}
                 href={`/deployment-gate?finding_id=${encodeURIComponent(task.finding_id)}`}
                 className="flex shrink-0 items-center gap-1 border border-border-soft px-1.5 py-1 font-data text-[9.5px] uppercase tracking-[0.05em] text-text-muted transition-colors hover:border-amber/50 hover:text-amber"
               >

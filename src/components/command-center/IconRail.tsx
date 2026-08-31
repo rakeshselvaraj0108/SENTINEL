@@ -40,6 +40,7 @@ export function IconRail() {
 
         return (
           <Link
+            prefetch={false}
             key={label}
             href={href}
             title={showBadge ? `${label} — ${criticalCount} critical` : label}

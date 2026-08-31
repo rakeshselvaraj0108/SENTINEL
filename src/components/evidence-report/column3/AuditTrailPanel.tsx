@@ -27,7 +27,7 @@ export function AuditTrailPanel({ evidence, selectedTarget, onSelect }: AuditTra
     <Panel
       title="Deterministic Audit Trail"
       headerRight={
-        <Link href="/audit-ledger" className="flex items-center gap-1 font-data text-[9.5px] text-text-dim transition-colors hover:text-amber">
+        <Link prefetch={false} href="/audit-ledger" className="flex items-center gap-1 font-data text-[9.5px] text-text-dim transition-colors hover:text-amber">
           full ledger
           <IconArrowUpRight size={10} strokeWidth={1.5} />
         </Link>

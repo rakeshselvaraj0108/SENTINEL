@@ -24,6 +24,7 @@ export function EvidenceVaultPanel({ evidenceDoc, findingId, loading, error }: E
       headerRight={
         evidenceDoc && findingId ? (
           <Link
+            prefetch={false}
             href={`/evidence?finding_id=${encodeURIComponent(findingId)}`}
             className="flex items-center gap-1 text-[10px] uppercase tracking-[0.06em] text-text-dim transition-colors hover:text-amber"
           >

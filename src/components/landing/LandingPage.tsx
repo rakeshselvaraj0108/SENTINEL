@@ -130,9 +130,15 @@ export function LandingPage() {
     setFlying(true);
   }, [flying, go, reduced, small]);
 
-  useEffect(() => {
-    router.prefetch?.("/command-center");
-  }, [router]);
+  // Not called: on a static export there is no Next.js server to hand back
+  // an RSC payload, so this always 404s - a real, once-per-visit console
+  // error on the highest-traffic page in the app for zero benefit, since
+  // "Get started" already navigates to a route the static host serves
+  // directly.
+  //
+  // useEffect(() => {
+  //   router.prefetch?.("/command-center");
+  // }, [router]);
 
   // Escape closes the agent panel; the canvas never traps focus.
   useEffect(() => {

@@ -22,6 +22,7 @@ export function PendingSignOffsPanel() {
       ) : (
         pending.map((task) => (
           <Link
+            prefetch={false}
             key={task.finding_id}
             href={`/deployment-gate?finding_id=${encodeURIComponent(task.finding_id)}`}
             className="flex items-start gap-2 border-b border-border-soft px-2 py-2 text-left transition-colors last:border-b-0 hover:bg-white/[0.02]"

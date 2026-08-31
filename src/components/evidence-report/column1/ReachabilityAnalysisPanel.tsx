@@ -27,6 +27,7 @@ export function ReachabilityAnalysisPanel({ evidence, highlighted }: { evidence:
         ))
       )}
       <Link
+        prefetch={false}
         href={`/remediation?finding_id=${encodeURIComponent(evidence.finding_id)}`}
         className="mt-1 flex w-fit items-center gap-1 font-data text-[10px] text-amber hover:underline"
       >

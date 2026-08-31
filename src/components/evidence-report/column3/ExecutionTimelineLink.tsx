@@ -4,6 +4,7 @@ import { IconArrowUpRight, IconTimeline } from "@tabler/icons-react";
 export function ExecutionTimelineLink({ findingId }: { findingId: string }) {
   return (
     <Link
+      prefetch={false}
       href={`/?finding_id=${encodeURIComponent(findingId)}`}
       className="flex items-center gap-2 border border-border-soft bg-panel/80 px-3 py-2.5 text-[11px] text-text-muted transition-colors hover:border-text-dim hover:text-text"
     >
