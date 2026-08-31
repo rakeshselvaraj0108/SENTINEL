@@ -64,7 +64,15 @@ def _ensure_lockfile(repo_dir: Path) -> None:
         cwd=repo_dir,
         capture_output=True,
         text=True,
-        timeout=120,
+        # 120s was measured on a full-speed local machine (~16s) and looked
+        # generous. It wasn't: on a shared free-tier host, real dependency
+        # resolution for this repo's full tree took longer than that and hit
+        # the timeout - "[startup] findings warm-up failed... timed out
+        # after 120 seconds" was the actual failure seen live. This is a
+        # one-time cost per fresh clone (the lockfile persists on disk once
+        # written), so 300s buys real headroom for slow/contended hosts
+        # without meaningfully changing the common case.
+        timeout=300,
     )
     # Deliberately not checked for success here: if it failed, the repo
     # still has no lockfile, and the audit call right after this will raise
