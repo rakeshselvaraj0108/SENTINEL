@@ -25,16 +25,23 @@ rejected after it, and the resulting sealed evidence record.*
 </div>
 
 > **Deployment status.** **[Live dashboard →](https://algebraic-pier-465415-a6.web.app)**,
-> on Firebase Hosting (Google Cloud, no billing account required). It is a
-> static build serving a real, complete captured investigation rather than
-> a live backend — a banner on every page says so, and every action that
-> would change state explains why it's disabled instead of pretending to
-> work. The backend itself runs against live **Cloud Firestore** and
-> **Cloud Pub/Sub**; it is **not deployed to Cloud Run**, which requires a
-> billing account this project does not have. The container image builds
-> and has been verified serving on an injected `$PORT`, and
-> `deploy/deploy.sh` performs the whole Cloud Run deploy in one command
-> once billing exists. See [Roadmap](#16-roadmap).
+> on Firebase Hosting (Google Cloud, no billing account required), talking
+> to a **fully live backend** — click Start Investigation and it runs for
+> real. The backend runs on [Render](https://render.com)'s free tier
+> against live **Cloud Firestore** and **Cloud Pub/Sub**. It is **not
+> deployed to Cloud Run**, which requires a billing account this project
+> does not have; the container image builds and has been verified serving
+> on an injected `$PORT`, and `deploy/deploy.sh` performs the whole Cloud
+> Run deploy in one command once billing exists. See
+> [Roadmap](#16-roadmap).
+>
+> **This is a real, publicly writable backend with no authentication.**
+> Anyone can start investigations, abort jobs, or record gate decisions.
+> That's a deliberate choice for a hackathon demo, not an oversight — see
+> [Security model](#14-security-model). The free tier also sleeps after 15
+> minutes of no traffic; the first request after that takes up to a minute
+> to wake it, then a cold investigation environment needs another 1-3
+> minutes to clone and scan before findings appear.
 
 ---
 
@@ -758,9 +765,10 @@ SENTINEL/
 
 ## 11. Demo walkthrough
 
-**[Try it live →](https://algebraic-pier-465415-a6.web.app)** — a static
-snapshot of one real, complete investigation. Screenshots below are from a
-local build of the same committed code.
+**[Try it live →](https://algebraic-pier-465415-a6.web.app)** — a fully
+live deployment; Start Investigation runs the real six-stage pipeline
+against the actual engine. Screenshots below are from a local build of the
+same committed code.
 
 ### 1. Landing — the fleet as a navigable scene
 
@@ -901,10 +909,16 @@ are gitignored, and CI fails if a `.env` is tracked or key-shaped strings
 appear in the tree. The Cloud Run deploy binds secrets from Secret Manager at
 runtime rather than baking them into the image.
 
-**Authentication is opt-in and off by default.** Without `SENTINEL_API_TOKENS`,
-mutating endpoints accept unauthenticated calls and record the actor as
-`local-dev (unauthenticated)`. That is fine for local development and **not**
-safe for a public deployment.
+**Authentication is opt-in and off by default — including on the hosted
+deployment.** Without `SENTINEL_API_TOKENS`, mutating endpoints accept
+unauthenticated calls and record the actor as `local-dev (unauthenticated)`.
+The public instance at
+[algebraic-pier-465415-a6.web.app](https://algebraic-pier-465415-a6.web.app)
+runs exactly this way: anyone can start investigations, abort jobs, or record
+gate decisions. That is a deliberate choice for a hackathon demo — the point
+is for a judge to click the real button and watch the real pipeline run,
+which a token wall would prevent — not a production security posture. Set
+`SENTINEL_API_TOKENS` before treating a deployment as anything more than that.
 
 ---
 
@@ -930,11 +944,13 @@ Stated plainly, because they bound how far the results can be trusted.
   per-process. Horizontal scaling would require moving both to shared storage.
 - **DWS seal availability.** The CAdES seal requires DWS credits. Without
   them, records carry only the SHA-256 content signature.
-- **The hosted instance is a static snapshot, not a live backend.**
+- **The hosted backend has no authentication.**
   [algebraic-pier-465415-a6.web.app](https://algebraic-pier-465415-a6.web.app)
-  serves a real, complete captured investigation with no engine behind it —
-  every action that would change state is disabled and says why. The live
-  engine only exists where you run it: locally, or against Cloud Run once
+  is fully live and open — see [Security model](#14-security-model).
+- **The hosted backend sleeps after 15 minutes idle** (Render's free tier).
+  The first request after that wakes it in under a minute; a cold
+  investigation environment then needs another 1-3 minutes to clone and
+  scan before findings appear. Cloud Run would not have this behavior once
   billing is enabled.
 
 ---
@@ -946,7 +962,8 @@ as though it exists.
 
 | Item | Status | Blocker |
 |---|---|---|
-| Cloud Run deployment (live backend, not a snapshot) | Image builds and runs; `deploy/deploy.sh` written and preflight-tested | Requires a billing account |
+| Cloud Run deployment (same image, on Google Cloud instead of Render) | Image builds and runs; `deploy/deploy.sh` written and preflight-tested | Requires a billing account |
+| Authentication on the public deployment | `SENTINEL_API_TOKENS` support already exists | Deliberately left open for the demo — see [Security model](#14-security-model) |
 | Demo video | — | To be recorded |
 | Cloud Run Jobs for sandboxed verification | Verification currently runs in-process on the worker | Depends on Cloud Run |
 | Secret Manager bindings | Configured in `deploy/cloudbuild.yaml` | Depends on Cloud Run |
