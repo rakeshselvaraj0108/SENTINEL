@@ -41,10 +41,42 @@ def ensure_repo_cloned(repo_dir: Path = DEMO_REPO_DIR, repo_url: str = DEMO_REPO
     return repo_dir
 
 
+def _ensure_lockfile(repo_dir: Path) -> None:
+    """npm audit hard-requires a lockfile ("loadVirtual requires existing
+    shrinkwrap file") and refuses outright without one. This is not a
+    hypothetical: the demo repo's own .gitignore excludes
+    package-lock.json, so a fresh clone of it has none - discovered when a
+    from-scratch container hung on its first scan with npm silently unable
+    to proceed. Any real target repo can legitimately choose not to commit
+    its lockfile, so this has to be handled generally, not patched around
+    for one repo.
+
+    --package-lock-only resolves the dependency tree into a lockfile
+    without installing anything; --ignore-scripts is required alongside it
+    - without it, npm runs the repo's own lifecycle scripts (juice-shop
+    triggers a full frontend build), which is slow, may need tooling the
+    scanning environment doesn't have, and has nothing to do with auditing
+    dependencies."""
+    if (repo_dir / "package-lock.json").exists():
+        return
+    subprocess.run(
+        ["npm.cmd" if _is_windows() else "npm", "i", "--package-lock-only", "--ignore-scripts"],
+        cwd=repo_dir,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    # Deliberately not checked for success here: if it failed, the repo
+    # still has no lockfile, and the audit call right after this will raise
+    # its own clear error - duplicating that check would just produce two
+    # different error messages for the same underlying fact.
+
+
 def run_npm_audit(repo_dir: Path) -> dict:
     """Shells out to the real npm CLI. npm audit exits non-zero whenever
     vulnerabilities are found, so we don't check the return code - we check
     that stdout is actually parseable JSON."""
+    _ensure_lockfile(repo_dir)
     result = subprocess.run(
         ["npm.cmd" if _is_windows() else "npm", "audit", "--json"],
         cwd=repo_dir,

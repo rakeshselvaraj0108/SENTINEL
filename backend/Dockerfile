@@ -1,15 +1,21 @@
-# SENTINEL agent fleet - Cloud Run image.
+# SENTINEL agent fleet - the one image, run on Cloud Run, Hugging Face
+# Spaces, or any other single-container host.
 #
-# Two things about this build are load-bearing and easy to get wrong:
+# Three things about this build are load-bearing and easy to get wrong:
 #
 # 1. Hunter is not a pure-Python agent. It shells out to the real `git` and
 #    `npm audit --json` binaries to produce findings, so a slim Python image
 #    alone would let the container start and then fail at the first scan.
 #    Node and git are therefore runtime dependencies, not build-time ones.
 #
-# 2. Cloud Run injects $PORT and terminates the TLS in front of us. Binding
-#    to a hardcoded 8000 is the single most common reason a working local
-#    image never passes a Cloud Run health check.
+# 2. The platform injects $PORT and terminates TLS in front of us. Binding
+#    to a hardcoded port is the single most common reason a working local
+#    image never passes a hosting platform's health check.
+#
+# 3. Investigations only run because a worker is polling the queue; the API
+#    only enqueues jobs. A single-container host has one process to start,
+#    so docker/start.sh runs both under it rather than assuming a second
+#    container exists somewhere to run app.worker.
 
 FROM python:3.12-slim AS builder
 
@@ -45,6 +51,8 @@ ENV PATH="/opt/venv/bin:$PATH" \
 WORKDIR /app
 COPY app ./app
 COPY pytest.ini ./
+COPY docker/start.sh ./docker/start.sh
+RUN chmod +x ./docker/start.sh
 
 # Cloud Run runs containers as an arbitrary non-root UID in some configs and
 # the agent writes clones/evidence under workdir, so ownership has to be set
@@ -57,7 +65,10 @@ USER sentinel
 ENV PORT=8080
 EXPOSE 8080
 
-# Shell form so $PORT expands. Single worker: the agent fleet keeps in-process
-# state (findings cache, dedup lock) that is not shared across workers, so
-# scaling happens through Cloud Run instances, not gunicorn forks.
-CMD exec uvicorn app.server:app --host 0.0.0.0 --port ${PORT}
+# start.sh runs the worker in the background and execs uvicorn as PID 1.
+# Investigations only ever run because a worker is polling the queue - the
+# API just enqueues jobs - so on any single-container host (this image,
+# wherever it's deployed) both have to live in the one process this
+# container gets. It also materialises GOOGLE_APPLICATION_CREDENTIALS_JSON
+# to a file when a host has no other way to deliver a file-shaped secret.
+CMD ["./docker/start.sh"]
