@@ -22,7 +22,21 @@
 a real RS256→HS256 key-confusion forgery being accepted before the patch and
 rejected after it, and the resulting sealed evidence record.*
 
+**[🚀 Live Dashboard](https://algebraic-pier-465415-a6.web.app)** ·
+**[⚙️ Live Backend API](https://sentinel-agent-fleet.onrender.com/api/system-info)** ·
+**[📄 API Docs](https://sentinel-agent-fleet.onrender.com/docs)** ·
+**[💻 Source](https://github.com/rakeshselvaraj0108/SENTINEL)**
+
 </div>
+
+| Deployed surface | URL | What it is |
+|---|---|---|
+| Dashboard | [algebraic-pier-465415-a6.web.app](https://algebraic-pier-465415-a6.web.app) | Firebase Hosting (Google Cloud); the live app itself |
+| Backend API | [sentinel-agent-fleet.onrender.com](https://sentinel-agent-fleet.onrender.com/api/system-info) | Render; `/api/system-info` shows live config |
+| Interactive API docs | [/docs](https://sentinel-agent-fleet.onrender.com/docs) | FastAPI's auto-generated Swagger UI |
+| Health check | [/api/health](https://sentinel-agent-fleet.onrender.com/api/health) | Live scan/evidence/memory-bank status |
+| Firestore data | [console →](https://console.firebase.google.com/project/algebraic-pier-465415-a6/firestore/databases/-default-/data/panel/sentinel_evidence) | The real `sentinel_evidence` collection (requires a Google login with project access to view) |
+| Pub/Sub subscription | [console →](https://console.cloud.google.com/cloudpubsub/subscription/detail/sentinel-investigations-worker?project=algebraic-pier-465415-a6) | The real job queue the worker polls (same access note) |
 
 > **Deployment status.** **[Live dashboard →](https://algebraic-pier-465415-a6.web.app)**,
 > on Firebase Hosting (Google Cloud, no billing account required), talking
