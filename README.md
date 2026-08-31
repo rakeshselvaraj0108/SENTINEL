@@ -14,7 +14,8 @@
 [![Google ADK](https://img.shields.io/badge/Google-ADK%202.7-4285F4?logo=google&logoColor=white)](https://google.github.io/adk-docs/)
 [![Strands Agents](https://img.shields.io/badge/AWS-Strands%20Agents-FF9900?logo=amazonaws&logoColor=white)](https://strandsagents.com/)
 [![Firestore + Pub/Sub](https://img.shields.io/badge/Google%20Cloud-Firestore%20%2B%20Pub%2FSub-4285F4?logo=googlecloud&logoColor=white)](https://cloud.google.com/)
-[![Tests](https://img.shields.io/badge/tests-194%20passing-4ADE80)](#13-tests)
+[![Tests](https://img.shields.io/badge/tests-199%20passing-4ADE80)](#13-tests)
+[![Architecture](https://img.shields.io/badge/docs-Architecture-6B7280)](ARCHITECTURE.md)
 
 ![SENTINEL Command Center](docs/screenshots/command-center.png)
 
@@ -25,6 +26,7 @@ rejected after it, and the resulting sealed evidence record.*
 **[🚀 Live Dashboard](https://algebraic-pier-465415-a6.web.app)** ·
 **[⚙️ Live Backend API](https://sentinel-agent-fleet.onrender.com/api/system-info)** ·
 **[📄 API Docs](https://sentinel-agent-fleet.onrender.com/docs)** ·
+**[🏛️ Architecture](ARCHITECTURE.md)** ·
 **[💻 Source](https://github.com/rakeshselvaraj0108/SENTINEL)**
 
 </div>
@@ -349,7 +351,7 @@ they are configured and buildable but not running. Dotted lines are not active.*
 | 3D landing | **React Three Fiber 9** + drei + postprocessing | Renders the actual fleet topology as a navigable scene rather than decoration |
 | Animation | **Framer Motion 13** | Overlay transitions and the camera hand-off into the Command Center |
 | Signing | `hashlib` SHA-256 (stdlib) | Cross-language reproducible, so the frontend can recompute the ledger chain independently |
-| Tests | pytest 9 + Vitest 4 | 194 tests; each security-invariant test verified to fail when its guard is removed |
+| Tests | pytest 9 + Vitest 4 | 199 tests; each security-invariant test verified to fail when its guard is removed |
 
 ---
 
@@ -425,7 +427,7 @@ detection that exists precisely to catch it.
 | Agent Gateway | `enforce()` on every tool call, checking registry then identity, appending each decision to a log | [`backend/app/governance/gateway.py`](backend/app/governance/gateway.py) |
 | Model Armor | Inline prompt-injection and PII scanning of untrusted repo content before it reaches a model | [`backend/app/governance/model_armor.py`](backend/app/governance/model_armor.py) |
 | Observability | OpenTelemetry spans using GenAI semantic conventions on every agent action | [`backend/app/observability.py`](backend/app/observability.py) |
-| Architecture diagram | Five diagrams | [Section 3](#3-architecture) |
+| Architecture diagram | Five diagrams in [Section 3](#3-architecture), plus a dedicated [ARCHITECTURE.md](ARCHITECTURE.md) covering decoupling, state, credentials and failure handling with real incidents | [Section 3](#3-architecture), [ARCHITECTURE.md](ARCHITECTURE.md) |
 | Spin-up instructions | Clean-machine setup plus a verification sequence | [Section 7](#7-getting-started), [Section 8](#8-verify-your-setup) |
 
 Select the ADK path with `SENTINEL_ORCHESTRATOR=adk`. All three orchestrators
@@ -449,7 +451,7 @@ coordinated and not what the evidence says.
 | Non-trivial implementation | Six-stage pipeline with real scanning, sandboxed execution, patch generation and cryptographic sealing | [`backend/app/agents/`](backend/app/agents/) |
 | Public repository | github.com/rakeshselvaraj0108/SENTINEL | This repository |
 | Open source license | MIT, in the repo and in the package manifest | [`LICENSE`](LICENSE), [`package.json`](package.json) |
-| Working implementation | 194 tests; the dashboard reads live agent output with no fixtures behind it | [Section 13](#13-tests) |
+| Working implementation | 199 tests; the dashboard reads live agent output with no fixtures behind it | [Section 13](#13-tests) |
 
 Run it with `SENTINEL_ORCHESTRATOR=strands`. The Strands agent drives exactly
 the same tool functions as the other orchestrators, so results are directly
@@ -706,7 +708,7 @@ credits. The record is still valid, sealed with SHA-256 only.
 **5. Run the tests.**
 
 ```bash
-cd backend && python -m pytest -q     # 171 passed
+cd backend && python -m pytest -q     # 176 passed
 cd .. && npm run test                 # 23 passed
 ```
 
@@ -764,7 +766,7 @@ SENTINEL/
 │   │   ├── ledger.py            # SHA-256 hash chain (stdlib only, so the
 │   │   │                        #   frontend can reproduce it exactly)
 │   │   └── observability.py     # OpenTelemetry, GenAI conventions
-│   └── tests/                   # 171 tests
+│   └── tests/                   # 176 tests
 ├── src/
 │   ├── app/                     # Next.js routes: landing + 8 pages
 │   ├── components/
@@ -871,13 +873,13 @@ belongs to a person.*
 ## 13. Tests
 
 ```bash
-cd backend && python -m pytest -q     # 171 tests
+cd backend && python -m pytest -q     # 176 tests
 npm run test                          # 23 tests
 ```
 
 | Suite | Count | Covers |
 |---|---|---|
-| `test_governance.py` | 44 | Registry, identity scopes, gateway enforcement, Model Armor |
+| `test_governance.py` | 45 | Registry, identity scopes, gateway enforcement, Model Armor's three-way severity |
 | `test_evidence_integrity.py` | 14 | Signing, tamper detection, signature recomputation |
 | `test_evidence_document.py` | 14 | Document serving, dual-seal verification, artifact archiving |
 | `test_nutrient_dws.py` | 14 | DWS request shape, binary handling, credit exhaustion |
@@ -889,6 +891,7 @@ npm run test                          # 23 tests
 | `test_cloud_backends.py` | 8 | Firestore and Pub/Sub adapters, topology provisioning |
 | `test_ledger_chain.py` | 8 | Hash chain, cross-language agreement with the frontend |
 | `test_stale_jobs.py` | 6 | Reclaiming jobs whose worker died |
+| `test_hunter_lockfile.py` | 4 | Self-healing a missing lockfile in the scanned repo |
 | `test_config_loading.py` | 5 | Configuration independent of working directory |
 
 These are security-invariant tests rather than coverage padding. Each has been
