@@ -225,6 +225,18 @@ interface UseCommandCenterStateResult {
   error: string | null;
   starting: boolean;
   aborting: boolean;
+  /**
+   * Set only by start()/abort(), and deliberately not the same state as the
+   * background poll's `error`. Every panel that shows `error` only does so
+   * when it has no data yet, which is almost never true once an
+   * investigation has run once - so an action failure sharing that slot was
+   * invisible in the one case that matters most: the user is looking at a
+   * populated dashboard, clicks Start, and the click silently does nothing.
+   * It was also being clobbered within ~2s by the next successful poll tick
+   * clearing the shared error before anyone could read it.
+   */
+  actionError: string | null;
+  clearActionError: () => void;
   start: () => Promise<void>;
   abort: () => Promise<void>;
 }
@@ -242,6 +254,7 @@ export function useCommandCenterState(findingId?: string | null): UseCommandCent
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [aborting, setAborting] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const mounted = useRef(true);
   const currentJobId = useRef<string | null>(null);
 
@@ -298,11 +311,12 @@ export function useCommandCenterState(findingId?: string | null): UseCommandCent
 
   const start = useCallback(async () => {
     setStarting(true);
+    setActionError(null);
     try {
       await startInvestigation(findingId);
       await poll();
     } catch (err) {
-      setError(err instanceof SentinelApiError ? err.message : "Failed to start investigation.");
+      setActionError(err instanceof SentinelApiError ? err.message : "Failed to start investigation.");
     } finally {
       setStarting(false);
     }
@@ -312,15 +326,18 @@ export function useCommandCenterState(findingId?: string | null): UseCommandCent
     const jobId = currentJobId.current;
     if (!jobId) return;
     setAborting(true);
+    setActionError(null);
     try {
       await abortJob(jobId);
       await poll();
     } catch (err) {
-      setError(err instanceof SentinelApiError ? err.message : "Failed to abort job.");
+      setActionError(err instanceof SentinelApiError ? err.message : "Failed to abort job.");
     } finally {
       setAborting(false);
     }
   }, [poll]);
 
-  return { state, loading, error, starting, aborting, start, abort };
+  const clearActionError = useCallback(() => setActionError(null), []);
+
+  return { state, loading, error, starting, aborting, actionError, clearActionError, start, abort };
 }

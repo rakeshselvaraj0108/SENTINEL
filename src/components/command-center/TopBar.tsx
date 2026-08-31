@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   IconShieldCheck,
   IconClipboardList,
@@ -9,6 +9,8 @@ import {
   IconPlayerStopFilled,
   IconTerminal2,
   IconPlayerPlayFilled,
+  IconAlertTriangle,
+  IconX,
 } from "@tabler/icons-react";
 import type { JobRecord, SystemInfo } from "@/lib/sentinel/api";
 import { getSystemInfo } from "@/lib/sentinel/api";
@@ -19,15 +21,37 @@ interface TopBarProps {
   aborting?: boolean;
   onStart?: () => void;
   onAbort?: () => void;
+  /** Set only when a Start/Abort click itself failed - see the comment on
+   *  UseCommandCenterStateResult.actionError for why this is not the same
+   *  thing as the background poll's connectivity error. */
+  actionError?: string | null;
+  onDismissActionError?: () => void;
 }
 
-export function TopBar({ job = null, starting = false, aborting = false, onStart, onAbort }: TopBarProps) {
+export function TopBar({
+  job = null,
+  starting = false,
+  aborting = false,
+  onStart,
+  onAbort,
+  actionError = null,
+  onDismissActionError,
+}: TopBarProps) {
   const router = useRouter();
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [showOps, setShowOps] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
 
   const isRunning = job?.status === "queued" || job?.status === "running";
+
+  // Auto-dismiss after a while so a stale failure does not sit in the UI
+  // forever, but stays up long enough to actually be read - this is the
+  // only place this message is ever shown.
+  useEffect(() => {
+    if (!actionError || !onDismissActionError) return;
+    const t = setTimeout(onDismissActionError, 8000);
+    return () => clearTimeout(t);
+  }, [actionError, onDismissActionError]);
 
   async function handleOps() {
     if (!systemInfo) {
@@ -147,6 +171,26 @@ export function TopBar({ job = null, starting = false, aborting = false, onStart
             </dl>
           ) : (
             <p>unreachable</p>
+          )}
+        </div>
+      )}
+
+      {actionError && (
+        <div
+          role="alert"
+          className="absolute inset-x-4 top-14 z-30 flex items-start gap-2 border border-danger/40 bg-danger/10 px-3 py-2 text-[11px] text-danger shadow-xl"
+        >
+          <IconAlertTriangle size={14} strokeWidth={1.6} className="mt-0.5 shrink-0" />
+          <span className="flex-1">{actionError}</span>
+          {onDismissActionError && (
+            <button
+              type="button"
+              onClick={onDismissActionError}
+              aria-label="Dismiss"
+              className="shrink-0 text-danger/70 hover:text-danger"
+            >
+              <IconX size={13} strokeWidth={1.8} />
+            </button>
           )}
         </div>
       )}

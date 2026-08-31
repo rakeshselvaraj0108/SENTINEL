@@ -29,7 +29,8 @@ function CommandCenterInner() {
   const findingId = searchParams.get("finding_id");
 
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null);
-  const { state, loading, error, starting, aborting, start, abort } = useCommandCenterState(findingId);
+  const { state, loading, error, starting, aborting, actionError, clearActionError, start, abort } =
+    useCommandCenterState(findingId);
 
   const replaySteps = state?.replaySteps ?? [];
   const jumpedStepId = selectedAgentId
@@ -38,7 +39,15 @@ function CommandCenterInner() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
-      <TopBar job={state?.job ?? null} starting={starting} aborting={aborting} onStart={start} onAbort={abort} />
+      <TopBar
+        job={state?.job ?? null}
+        starting={starting}
+        aborting={aborting}
+        onStart={start}
+        onAbort={abort}
+        actionError={actionError}
+        onDismissActionError={clearActionError}
+      />
       <div className="flex min-h-0 flex-1">
         <IconRail />
         <div className="flex min-h-0 flex-1 flex-col">

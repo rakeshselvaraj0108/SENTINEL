@@ -10,6 +10,31 @@ import type { AgentId, AgentRecord, GraphEdge, GraphNode, LogLine, ReplayStep } 
 
 export const API_BASE = process.env.NEXT_PUBLIC_SENTINEL_API_URL ?? "http://localhost:8000";
 
+/**
+ * When set at build time, every GET is served from a static JSON snapshot
+ * of a real engine run rather than a network call. This exists for one
+ * reason: a static hosting target (Firebase Hosting, GitHub Pages) has no
+ * backend behind it, and "the app is up but every panel says CONNECTION
+ * LOST" is a worse demo than an honest read-only mode.
+ *
+ * The snapshot is not fabricated data - it is `public/api-snapshot/snapshot.json`,
+ * captured with a script that hits a real running engine and writes back
+ * its actual responses (25 grounded findings, one genuinely sealed evidence
+ * record, real gateway and Model Armor logs). Regenerate it whenever the
+ * live demo state should move forward; never hand-edit it.
+ */
+export const STATIC_SNAPSHOT_MODE = process.env.NEXT_PUBLIC_STATIC_SNAPSHOT === "1";
+
+let _snapshotPromise: Promise<Record<string, unknown>> | null = null;
+function loadSnapshot(): Promise<Record<string, unknown>> {
+  if (!_snapshotPromise) {
+    _snapshotPromise = fetch("/api-snapshot/snapshot.json")
+      .then((r) => r.json())
+      .catch(() => ({}));
+  }
+  return _snapshotPromise;
+}
+
 export class SentinelApiError extends Error {
   constructor(message: string, public status?: number) {
     super(message);
@@ -18,6 +43,32 @@ export class SentinelApiError extends Error {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = (init?.method ?? "GET").toUpperCase();
+
+  if (STATIC_SNAPSHOT_MODE) {
+    if (method !== "GET") {
+      // A snapshot can serve a fixed read, but it cannot start an
+      // investigation or record a decision, and pretending it did would be
+      // exactly the kind of fabricated result this project argues against.
+      throw new SentinelApiError(
+        "This is a read-only snapshot deployment showing a completed investigation. " +
+          "Starting investigations, approving gates, and other actions that change state " +
+          "require running the real engine - see the README's Getting Started section."
+      );
+    }
+    const snapshot = await loadSnapshot();
+    if (path in snapshot) return snapshot[path] as T;
+    // Fall back to matching on the path with any query string stripped.
+    // Snapshot capture and the live client can reasonably choose different
+    // limits (?limit=100 vs ?limit=200) for the same logical resource, and
+    // requiring an exact string match on the whole URL would make the
+    // snapshot brittle to a value that carries no real distinction here.
+    const base = path.split("?")[0];
+    const fallbackKey = Object.keys(snapshot).find((k) => k.split("?")[0] === base);
+    if (fallbackKey) return snapshot[fallbackKey] as T;
+    throw new SentinelApiError(`No snapshot recorded for ${path}.`, 404);
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
