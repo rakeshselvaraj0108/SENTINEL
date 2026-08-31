@@ -25,6 +25,7 @@ from app.agents.verification_lab import run_scenario
 from app.config import DEMO_REPO_DIR, GEMINI_MODEL
 from app.governance.gateway import enforce
 from app.observability import traced_agent
+from app.store import get_store
 from app.schemas import (
     Finding,
     PatchProposal,
@@ -150,4 +151,15 @@ def evidence_agent_seal_record(
         patch_proposal=PatchProposal(**patch_proposal) if patch_proposal else None,
         repo_dir=_REPO_DIR,
     )
-    return evidence.model_dump(mode="json")
+    payload = evidence.model_dump(mode="json")
+    # assemble_evidence() only writes a local JSON file (EVIDENCE_DIR) - it
+    # has no idea the EvidenceStore abstraction (Firestore/DynamoDB/local)
+    # even exists. Every real investigation was therefore only ever landing
+    # on whatever machine's disk ran the worker; the configured cloud store
+    # was never actually written to by the running application, no matter
+    # which orchestrator or backend was selected. Persisting here, in the
+    # one function all three orchestrators share, is what makes the store
+    # abstraction real instead of three unused implementations of an
+    # interface nothing calls.
+    get_store().put_evidence(finding_id, payload)
+    return payload
